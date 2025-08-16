@@ -1,145 +1,137 @@
 // assets/js/main-login.js
-// زر تسجيل الدخول يعمل حتى لو لم تُحمَّل مكتبات Google بعد.
-// بعد الدخول: إن وُجد مفتاح Gemini => levels.html وإلا => key.html
+// نسخة مبسّطة ومضمونة لزر الدخول: لا تعتمد على gapi ولا onload.
+// عند الضغط: نحقن مكتبة GIS إن لزم، ثم نطلب التوكن، ثم نوجّه حسب وجود مفتاح Gemini.
 
 (function () {
   const CFG   = window.APP_CONFIG || {};
-  const PAGES = CFG.PAGES || {};
-  const STORE = CFG.STORAGE || {};
-  const G     = CFG.GOOGLE  || {};
+  const PAGES = (CFG.PAGES   || {});
+  const STORE = (CFG.STORAGE || {});
+  const G     = (CFG.GOOGLE  || {});
 
   const SCOPES = Array.isArray(G.SCOPES) ? G.SCOPES.join(' ') : (G.SCOPES || '');
-
   const $ = (s, r=document) => r.querySelector(s);
-  const signinBtn  = $('#signin-btn');
+
+  const btn = $('#signin-btn');
   const userInfo   = $('#user-info');
   const userName   = $('#user-name');
   const userAvatar = $('#user-avatar');
 
-  const gotoPage = (name) =>
-    (window.goto ? window.goto(name) :
-      (window.location.href = (window.buildUrl ? window.buildUrl(name) : name)));
-
-  const hasApiKey = () => {
-    try { return !!(window.safeGet ? window.safeGet(STORE.API_KEY) : localStorage.getItem(STORE.API_KEY)); }
-    catch { return false; }
+  const goto = (name) => {
+    try {
+      if (window.goto) return window.goto(name);
+      const url = window.buildUrl ? window.buildUrl(name) : name;
+      window.location.href = url;
+    } catch { window.location.href = name; }
   };
 
-  // ---------- تحميل السكربتات عند الحاجة ----------
-  function loadScript(src) {
-    return new Promise((resolve) => {
-      if ([...document.scripts].some(s => s.src === src)) { resolve(); return; }
-      const s = document.createElement('script');
-      s.src = src; s.async = true; s.defer = true;
-      s.onload = () => resolve();
-      s.onerror = () => resolve();            // لا نعلّق في الخطأ
-      document.head.appendChild(s);
-      setTimeout(resolve, 15000);             // مهلة أمان
-    });
-  }
-
-  // ---------- GIS (الأساسي لتسجيل الدخول) ----------
-  let tokenClient = null;
-
-  async function ensureGIS() {
-    if (tokenClient) return tokenClient;
-    if (!window.google?.accounts?.oauth2) {
-      await loadScript('https://accounts.google.com/gsi/client');
-    }
-    if (!window.google?.accounts?.oauth2) return null;
-
-    tokenClient = window.google.accounts.oauth2.initTokenClient({
-      client_id: G.CLIENT_ID || '',
-      scope: SCOPES,
-      callback: onTokenReceived,
-    });
-    return tokenClient;
-  }
-
-  // ---------- GAPI (اختياري فقط لضبط التوكن داخليًا) ----------
-  async function ensureGapi() {
-    if (!window.gapi?.load) {
-      await loadScript('https://apis.google.com/js/api.js');
-    }
-    if (window.gapi?.load) {
-      try {
-        await new Promise((res) => window.gapi.load('client', () => window.gapi.client.init({}).then(res).catch(res)));
-      } catch {}
-    }
-  }
-
-  // callbacks لو كنت تضع onload في index.html
-  window.gisLoaded  = () => ensureGIS();
-  window.gapiLoaded = () => ensureGapi();
-
-  // ---------- بعد استلام التوكن ----------
-  async function onTokenReceived(resp) {
-    if (resp?.error) return;
+  const hasApiKey = () => {
     try {
-      window.gapi?.client?.setToken?.({ access_token: resp.access_token });
+      if (window.safeGet) return !!window.safeGet(STORE.API_KEY);
+      return !!localStorage.getItem(STORE.API_KEY);
+    } catch { return false; }
+  };
 
-      // نملأ الاسم/الصورة (اختياري)
-      try {
-        const r = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
-          headers: { Authorization: `Bearer ${resp.access_token}` }
-        });
-        if (r.ok) {
-          const p = await r.json();
-          if (userName)  userName.textContent = p.given_name || p.name || '';
-          if (userAvatar && p.picture) userAvatar.src = p.picture;
-          userInfo?.classList?.remove('hidden');
-          signinBtn?.classList?.add('hidden');
-        }
-      } catch {}
-
-      // توجيه
-      if (hasApiKey()) gotoPage(PAGES.LEVELS || 'levels.html');
-      else             gotoPage(PAGES.KEY    || 'key.html');
-
-    } catch {
-      alert('حدث خطأ أثناء إتمام تسجيل الدخول.');
-    }
+  // تحميل مكتبة Google Identity إن لزم
+  function loadGIS() {
+    return new Promise((resolve) => {
+      if (window.google?.accounts?.oauth2) { resolve(); return; }
+      if ([...document.scripts].some(s => s.src.includes('accounts.google.com/gsi/client'))) {
+        // السكربت موجود وسيتحمّل بعد قليل
+        const check = setInterval(() => {
+          if (window.google?.accounts?.oauth2) { clearInterval(check); resolve(); }
+        }, 100);
+        setTimeout(() => { clearInterval(check); resolve(); }, 15000);
+        return;
+      }
+      const s = document.createElement('script');
+      s.src = 'https://accounts.google.com/gsi/client';
+      s.async = true; s.defer = true;
+      s.onload = () => resolve();
+      s.onerror = () => resolve(); // لا نعلّق لو فشل
+      document.head.appendChild(s);
+      setTimeout(resolve, 15000);
+    });
   }
 
-  // ---------- زر الدخول ----------
-  async function signInNow() {
-    // نضمن المكتبتين (GIS أولًا لأنه الأهم)
-    await ensureGIS();
-    await ensureGapi();
-
-    if (!tokenClient) {
-      alert('خدمات Google لم تجهز بعد. جرّب خلال ثوانٍ.');
+  // طلب التوكن وتوجيه المستخدم
+  async function startSignIn() {
+    if (!G.CLIENT_ID) {
+      alert('CLIENT_ID غير مضبوط في assets/js/config.js');
       return;
     }
+
+    // نضمن تحميل مكتبة GIS
+    await loadGIS();
+
+    if (!window.google?.accounts?.oauth2) {
+      alert('تعذّر تحميل خدمة Google. حدّث الصفحة ثم جرّب ثانية.');
+      return;
+    }
+
+    let tokenClient;
+    try {
+      tokenClient = window.google.accounts.oauth2.initTokenClient({
+        client_id: G.CLIENT_ID,
+        scope: SCOPES,
+        callback: async (resp) => {
+          if (resp?.error) return;
+
+          // ملء بيانات المستخدم (اختياري للتجربة البصرية)
+          try {
+            const r = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
+              headers: { Authorization: `Bearer ${resp.access_token}` }
+            });
+            if (r.ok) {
+              const p = await r.json();
+              if (userName)  userName.textContent = p.given_name || p.name || '';
+              if (userAvatar && p.picture) userAvatar.src = p.picture;
+              userInfo?.classList?.remove('hidden');
+              btn?.classList?.add('hidden');
+            }
+          } catch {}
+
+          // التوجيه النهائي
+          if (hasApiKey()) goto(PAGES.LEVELS || 'levels.html');
+          else             goto(PAGES.KEY    || 'key.html');
+        }
+      });
+    } catch (e) {
+      alert('فشل تهيئة Google OAuth.'); return;
+    }
+
     try {
       tokenClient.requestAccessToken({ prompt: 'consent' });
     } catch {
-      alert('تعذّر فتح نافذة تسجيل الدخول. اسمح بالنوافذ المنبثقة ثم جرّب ثانية.');
+      alert('المتصفح منع النافذة المنبثقة. اسمح بالنوافذ المنبثقة لهذا الموقع ثم اضغط الزر مرة أخرى.');
     }
   }
 
-  // نجعلها متاحة أيضًا للـ onclick في الزر إن لزم
-  window.__signinNow = signInNow;
+  // نعرّف الدالة عالميًا كاحتياط وتفعيل الزر
+  window.__signinNow = startSignIn;
 
   function init() {
-    if (signinBtn) {
-      signinBtn.disabled = false;
-      signinBtn.addEventListener('click', signInNow);
+    if (btn) {
+      btn.disabled = false;
+      // نستعمل كلٍ من onclick والـ addEventListener للاحتياط
+      btn.onclick = startSignIn;
+      btn.addEventListener('click', startSignIn);
     }
-    // تحميل مسبق هادئ
-    ensureGIS();
-    ensureGapi();
 
-    // تحويل تلقائي لو كان لديك توكن سابق
+    // تحويل تلقائي صامت إن كان المستخدم مسجّل سابقًا ولديه مفتاح
     setTimeout(() => {
       try {
-        const tok = window.gapi?.client?.getToken?.();
-        if (tok?.access_token) {
-          if (hasApiKey()) gotoPage(PAGES.LEVELS || 'levels.html');
-          else             gotoPage(PAGES.KEY    || 'key.html');
+        if (hasApiKey() && sessionStorage.getItem('__signedOnce')) {
+          goto(PAGES.LEVELS || 'levels.html');
         }
       } catch {}
     }, 600);
+
+    // علامة جلسة بعد أول ضغط
+    document.addEventListener('click', (e) => {
+      if (e.target && e.target.id === 'signin-btn') {
+        try { sessionStorage.setItem('__signedOnce', '1'); } catch {}
+      }
+    });
   }
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
