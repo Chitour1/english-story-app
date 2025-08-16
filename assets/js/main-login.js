@@ -1,82 +1,102 @@
 // assets/js/main-login.js
-// نسخة مبسّطة ومضمونة لزر الدخول: لا تعتمد على gapi ولا onload.
-// عند الضغط: نحقن مكتبة GIS إن لزم، ثم نطلب التوكن، ثم نوجّه حسب وجود مفتاح Gemini.
+// يضمن وجود APP_CONFIG.GOOGLE.CLIENT_ID حتى لو تأخر/لم يُحمّل config.js (مع cache-buster)
+// ثم يفتح تسجيل الدخول عبر Google Identity (GIS) ويوجّه حسب وجود مفتاح Gemini.
 
 (function () {
-  const CFG   = window.APP_CONFIG || {};
-  const PAGES = (CFG.PAGES   || {});
-  const STORE = (CFG.STORAGE || {});
-  const G     = (CFG.GOOGLE  || {});
-
-  const SCOPES = Array.isArray(G.SCOPES) ? G.SCOPES.join(' ') : (G.SCOPES || '');
   const $ = (s, r=document) => r.querySelector(s);
 
-  const btn = $('#signin-btn');
+  const btn        = $('#signin-btn');
   const userInfo   = $('#user-info');
   const userName   = $('#user-name');
   const userAvatar = $('#user-avatar');
 
-  const goto = (name) => {
+  // ---------------- helpers ----------------
+  function getCFG() { return window.APP_CONFIG || {}; }
+  function getGOOG(){ return (getCFG().GOOGLE || {}); }
+  function getPAGES(){ return (getCFG().PAGES || {}); }
+  function getSTORE(){ return (getCFG().STORAGE || {}); }
+  function hasApiKey() {
+    const k = getSTORE().API_KEY || '';
+    try { return !!(window.safeGet ? window.safeGet(k) : localStorage.getItem(k)); } catch { return false; }
+  }
+  function goto(page) {
     try {
-      if (window.goto) return window.goto(name);
-      const url = window.buildUrl ? window.buildUrl(name) : name;
+      if (window.goto) return window.goto(page);
+      const url = window.buildUrl ? window.buildUrl(page) : page;
       window.location.href = url;
-    } catch { window.location.href = name; }
-  };
+    } catch { window.location.href = page; }
+  }
 
-  const hasApiKey = () => {
-    try {
-      if (window.safeGet) return !!window.safeGet(STORE.API_KEY);
-      return !!localStorage.getItem(STORE.API_KEY);
-    } catch { return false; }
-  };
-
-  // تحميل مكتبة Google Identity إن لزم
-  function loadGIS() {
+  function loadScript(src) {
     return new Promise((resolve) => {
-      if (window.google?.accounts?.oauth2) { resolve(); return; }
-      if ([...document.scripts].some(s => s.src.includes('accounts.google.com/gsi/client'))) {
-        // السكربت موجود وسيتحمّل بعد قليل
-        const check = setInterval(() => {
-          if (window.google?.accounts?.oauth2) { clearInterval(check); resolve(); }
-        }, 100);
-        setTimeout(() => { clearInterval(check); resolve(); }, 15000);
-        return;
-      }
+      if ([...document.scripts].some(s => s.src === src)) { resolve(); return; }
       const s = document.createElement('script');
-      s.src = 'https://accounts.google.com/gsi/client';
-      s.async = true; s.defer = true;
+      s.src = src; s.async = true; s.defer = true;
       s.onload = () => resolve();
-      s.onerror = () => resolve(); // لا نعلّق لو فشل
+      s.onerror = () => resolve();
       document.head.appendChild(s);
       setTimeout(resolve, 15000);
     });
   }
 
-  // طلب التوكن وتوجيه المستخدم
-  async function startSignIn() {
-    if (!G.CLIENT_ID) {
-      alert('CLIENT_ID غير مضبوط في assets/js/config.js');
-      return;
-    }
+  async function ensureConfig(maxWaitMs = 5000) {
+    // إذا كان CLIENT_ID موجودًا نعود مباشرة
+    if (getGOOG().CLIENT_ID) return true;
 
-    // نضمن تحميل مكتبة GIS
-    await loadGIS();
+    // جرّب تحميل config.js يدويًا مع cache-buster
+    const cacheBust = Math.floor(Date.now() / 60000); // تتغير كل دقيقة
+    await loadScript(`assets/js/config.js?v=${cacheBust}`);
 
+    // انتظر حتى يظهر CLIENT_ID
+    const start = Date.now();
+    return await new Promise((resolve) => {
+      const timer = setInterval(() => {
+        if (getGOOG().CLIENT_ID) { clearInterval(timer); resolve(true); }
+        else if (Date.now() - start > maxWaitMs) { clearInterval(timer); resolve(false); }
+      }, 60);
+    });
+  }
+
+  async function ensureGIS() {
     if (!window.google?.accounts?.oauth2) {
-      alert('تعذّر تحميل خدمة Google. حدّث الصفحة ثم جرّب ثانية.');
+      await loadScript('https://accounts.google.com/gsi/client');
+    }
+    return !!window.google?.accounts?.oauth2;
+  }
+
+  // ---------------- sign-in flow ----------------
+  async function startSignIn() {
+    btn && (btn.disabled = true);
+
+    // 1) تأكد من config.js و CLIENT_ID
+    const okCfg = await ensureConfig();
+    const G = getGOOG();
+    const SCOPES = Array.isArray(G.SCOPES) ? G.SCOPES.join(' ') : (G.SCOPES || '');
+
+    if (!okCfg || !G.CLIENT_ID) {
+      alert('CLIENT_ID غير مضبوط في assets/js/config.js.\nتأكد من لصق CLIENT_ID الصحيح ثم حدِّث الصفحة (Ctrl+F5).');
+      btn && (btn.disabled = false);
       return;
     }
 
+    // 2) حمّل Google Identity
+    const okGIS = await ensureGIS();
+    if (!okGIS) {
+      alert('تعذّر تحميل خدمة Google. حدِّث الصفحة ثم جرّب ثانية.');
+      btn && (btn.disabled = false);
+      return;
+    }
+
+    // 3) افتح نافذة الموافقة ووجّه
     let tokenClient;
     try {
       tokenClient = window.google.accounts.oauth2.initTokenClient({
         client_id: G.CLIENT_ID,
         scope: SCOPES,
         callback: async (resp) => {
-          if (resp?.error) return;
+          if (resp?.error) { btn && (btn.disabled = false); return; }
 
-          // ملء بيانات المستخدم (اختياري للتجربة البصرية)
+          // تعبئة اسم/صورة (اختياري)
           try {
             const r = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
               headers: { Authorization: `Bearer ${resp.access_token}` }
@@ -90,48 +110,37 @@
             }
           } catch {}
 
-          // التوجيه النهائي
+          const PAGES = getPAGES();
           if (hasApiKey()) goto(PAGES.LEVELS || 'levels.html');
           else             goto(PAGES.KEY    || 'key.html');
         }
       });
-    } catch (e) {
-      alert('فشل تهيئة Google OAuth.'); return;
+    } catch {
+      alert('فشل تهيئة Google OAuth.');
+      btn && (btn.disabled = false);
+      return;
     }
 
     try {
       tokenClient.requestAccessToken({ prompt: 'consent' });
     } catch {
-      alert('المتصفح منع النافذة المنبثقة. اسمح بالنوافذ المنبثقة لهذا الموقع ثم اضغط الزر مرة أخرى.');
+      alert('تم منع النافذة المنبثقة. اسمح بها لهذا الموقع ثم اضغط الزر مرة أخرى.');
+      btn && (btn.disabled = false);
     }
   }
 
-  // نعرّف الدالة عالميًا كاحتياط وتفعيل الزر
+  // متاح أيضًا بالـ onclick الاحتياطي
   window.__signinNow = startSignIn;
 
   function init() {
     if (btn) {
       btn.disabled = false;
-      // نستعمل كلٍ من onclick والـ addEventListener للاحتياط
       btn.onclick = startSignIn;
       btn.addEventListener('click', startSignIn);
     }
-
-    // تحويل تلقائي صامت إن كان المستخدم مسجّل سابقًا ولديه مفتاح
-    setTimeout(() => {
-      try {
-        if (hasApiKey() && sessionStorage.getItem('__signedOnce')) {
-          goto(PAGES.LEVELS || 'levels.html');
-        }
-      } catch {}
-    }, 600);
-
-    // علامة جلسة بعد أول ضغط
-    document.addEventListener('click', (e) => {
-      if (e.target && e.target.id === 'signin-btn') {
-        try { sessionStorage.setItem('__signedOnce', '1'); } catch {}
-      }
-    });
+    // تحميل مسبق صامت
+    ensureConfig();
+    loadScript('https://accounts.google.com/gsi/client');
   }
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
