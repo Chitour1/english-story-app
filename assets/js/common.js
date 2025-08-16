@@ -1,75 +1,116 @@
 // assets/js/common.js
-// شريط التنبيه + تسجيل الدخول مباشرةً من أي صفحة + إخفاء الشريط بعد النجاح.
+// توجيه الروابط + لافتة تسجيل الدخول الموحّدة + محاولة تجديد التوكن بصمت
 
 (function () {
-  const CFG   = window.APP_CONFIG || {};
-  const PAGES = CFG.PAGES || {};
-  const BANNER_ID = "__esa_auth_banner";
+  const { APP_BASE, PAGES, STORAGE } = window.APP_CONFIG || {};
+  const HAS_CONSENT_KEY = (STORAGE?.PREFIX || "english_story_app__") + "google_has_consent";
 
-  const $ = (s,r=document)=> r.querySelector(s);
+  // ======== أدوات مساعدة بسيطة ========
+  function buildUrl(page) {
+    const base = (window.APP_CONFIG?.APP_BASE || "/").replace(/\/+$/, "");
+    return `${base}/${page}`;
+  }
+  function navTo(page) { window.location.href = buildUrl(page); }
+  function onReady(fn) {
+    if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", fn);
+    else fn();
+  }
+  function lsGet(k, d = "") { try { return localStorage.getItem(k) ?? d; } catch { return d; } }
+  function lsSet(k, v) { try { localStorage.setItem(k, v); } catch {} }
 
-  function ensureBanner() {
-    if (document.getElementById(BANNER_ID)) return document.getElementById(BANNER_ID);
+  // ======== لافتة تسجيل الدخول (موحّدة لكل الصفحات) ========
+  function ensureBannerExists() {
+    if (document.getElementById("global-signin-banner")) return;
 
     const bar = document.createElement("div");
-    bar.id = BANNER_ID;
+    bar.id = "global-signin-banner";
     bar.dir = "rtl";
-    bar.className = "fixed top-0 inset-x-0 z-50 bg-amber-50 border-b border-amber-200 text-amber-900";
+    bar.style.cssText =
+      "position:sticky;top:0;z-index:50;background:#fff5e6;border-bottom:1px solid #f4d4a4;" +
+      "padding:.6rem .9rem;font-family:'Cairo',sans-serif;display:none;";
+
     bar.innerHTML = `
-      <div class="container mx-auto max-w-5xl px-4 py-2 text-sm flex items-center justify-between gap-3">
-        <div id="esa-auth-text">لست مُسجّلًا في Google — <strong>تقدّمك لن يُحفَظ على Google Drive</strong>.</div>
-        <div class="flex items-center gap-2">
-          <button id="esa-auth-btn" class="bg-amber-600 hover:bg-amber-700 text-white rounded-md px-3 py-1">
-            تسجيل الدخول لحفظ التقدّم
-          </button>
-          <button id="esa-auth-close" class="px-2 py-1">إغلاق</button>
-        </div>
-      </div>`;
-    document.body.appendChild(bar);
+      <div style="display:flex;align-items:center;gap:.75rem;justify-content:flex-start;flex-wrap:wrap">
+        <span style="color:#7c2d12;font-weight:700">لست مُسجّلًا في Google — تقدّمك لن يُحفَظ على Google Drive.</span>
+        <button id="signin-drive-btn"
+                style="background:#d97706;color:white;border:none;border-radius:.5rem;
+                       padding:.45rem .9rem;cursor:pointer;font-weight:700">
+          تسجيل الدخول لحفظ التقدّم
+        </button>
+        <button id="banner-close"
+                style="background:transparent;border:none;color:#7c2d12;cursor:pointer;font-weight:700">
+          إغلاق
+        </button>
+      </div>
+    `;
+    document.body.prepend(bar);
 
-    $("#esa-auth-close").onclick = () => bar.remove();
-
-    $("#esa-auth-btn").onclick = async () => {
-      const btn = $("#esa-auth-btn");
-      const txt = $("#esa-auth-text");
+    // أزرار
+    bar.querySelector("#banner-close")?.addEventListener("click", () => hideBanner());
+    bar.querySelector("#signin-drive-btn")?.addEventListener("click", async () => {
       try {
-        btn.disabled = true;
-        btn.textContent = "جاري تسجيل الدخول…";
-        await window.Auth?.ready?.();
-        const ok = await window.Auth?.signInInteractive?.();
-        if (ok) {
-          txt.textContent = "تم تسجيل الدخول. تتمّ المزامنة…";
-          try { await window.Auth?.loadFromDrive?.(); } catch {}
-          bar.remove();
-        } else {
-          btn.disabled = false;
-          btn.textContent = "تسجيل الدخول لحفظ التقدّم";
-          alert("تعذّر تسجيل الدخول. تأكّد من السماح بالنوافذ المنبثقة ومن اختيار الحساب.");
-        }
-      } catch {
-        btn.disabled = false;
-        btn.textContent = "تسجيل الدخول لحفظ التقدّم";
-        alert("حدث خطأ غير متوقّع أثناء تسجيل الدخول.");
+        // إجبار طلب الموافقة أول مرة فقط
+        lsSet(HAS_CONSENT_KEY, "0");
+        await window.Auth.signInInteractive();
+        hideBanner();
+      } catch (e) {
+        alert("تعذّر تسجيل الدخول إلى Google: " + (e?.message || e));
       }
-    };
-
-    return bar;
+    });
   }
 
-  async function guard() {
-    try { await window.Auth?.ready?.(); } catch {}
-    try { await window.Auth?.silent?.(); } catch {}
-    const ok = !!(window.Auth?.isSignedIn?.());
-    if (!ok) ensureBanner();
-    else {
-      const ex = document.getElementById(BANNER_ID);
-      if (ex) ex.remove();
+  function showBanner() {
+    const el = document.getElementById("global-signin-banner");
+    if (el) el.style.display = "block";
+  }
+  function hideBanner() {
+    const el = document.getElementById("global-signin-banner");
+    if (el) el.style.display = "none";
+  }
+
+  // محاولة صامتة لتجديد التوكن إذا سبق منح الموافقة
+  async function refreshBannerState() {
+    try {
+      if (window.Auth.hasValidToken()) {
+        hideBanner();
+        return;
+      }
+      const hasConsent = lsGet(HAS_CONSENT_KEY, "0") === "1";
+      if (hasConsent) {
+        await window.Auth.ensureAccessToken(); // صامت
+        hideBanner();
+      } else {
+        showBanner();
+      }
+    } catch {
+      // لو فشل التجديد الصامت نظهر اللافتة فقط
+      showBanner();
     }
   }
 
-  if (document.readyState === "loading") {
-    document.addEventListener("DOMContentLoaded", guard);
-  } else {
-    guard();
-  }
+  // ======== تفعيل عام عند فتح أي صفحة ========
+  onReady(async () => {
+    // توجيه جميع العناصر التي عليها data-nav
+    document.querySelectorAll("[data-nav]").forEach((el) => {
+      el.addEventListener("click", (e) => {
+        e.preventDefault();
+        const page = el.getAttribute("data-nav");
+        if (page) navTo(page);
+      });
+    });
+
+    // تفعيل Google Auth
+    try { window.Auth.init(); } catch {}
+
+    // إنشاء اللافتة مرة واحدة ثم ضبط حالتها
+    ensureBannerExists();
+    await refreshBannerState();
+
+    // نجعل الدالة متاحة عند الحاجة لإعادة التقييم
+    window.GlobalAuth = { refreshBannerState };
+  });
+
+  // ======== روابط أساسية جاهزة للاستعمال في HTML إن احتجت ========
+  window.goto = window.goto || navTo;
+  window.buildUrl = window.buildUrl || buildUrl;
 })();
