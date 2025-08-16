@@ -1,59 +1,74 @@
 // assets/js/main-levels.js
-(function () {
-  const $ = (s, r = document) => r.querySelector(s);
+// يربط بطاقة A1 مهما تغيّر الـ HTML + يحدّث عدّادات مبسطة + يربط رابط صفحة المفتاح.
+
+(function(){
   const CFG   = window.APP_CONFIG || {};
   const PAGES = CFG.PAGES || {};
-  const S     = CFG.STORAGE || {};
+  const STORE = CFG.STORAGE || {};
+  const $ = (s,r=document)=> r.querySelector(s);
+  const $$= (s,r=document)=> Array.from(r.querySelectorAll(s));
+  const build = (p)=> window.buildUrl ? buildUrl(p) : p;
 
-  function t(id, v) { const el = $('#' + id); if (el) el.textContent = v; }
+  // رابط صفحة المفتاح إن وُجد زر/نص "مفتاح Gemini"
+  const keyLink = $$("a,button").find(el=> /Gemini|مفتاح/i.test(el.textContent));
+  if (keyLink) keyLink.addEventListener('click', (e)=> {
+    e.preventDefault();
+    window.location.href = build(PAGES.KEY || "key.html");
+  });
 
-  function computeCounters() {
-    const a1List = (window.A1_WORDS || window.a1Words || []); // من state.js
-    const totalA1 = Array.isArray(a1List) ? a1List.length : null;
-
-    const hist   = window.safeGetJson ? safeGetJson(S.HISTORY, [])    : [];
-    const inProg = window.safeGetJson ? safeGetJson(S.IN_PROGRESS, []) : [];
-    const learned = new Set();
-    hist.forEach(h => (h?.learnedWords || []).forEach(w => learned.add(String(w).toLowerCase())));
-    inProg.forEach(it => it?.word && learned.add(String(it.word).toLowerCase()));
-
-    const learnedInA1 = a1List && a1List.length
-      ? [...learned].filter(w => a1List.includes(w)).length
-      : learned.size;
-
-    if ($('#counter-a1-total'))   t('counter-a1-total',   totalA1 ?? '—');
-    if ($('#counter-a1-learned')) t('counter-a1-learned', learnedInA1);
-    if ($('#counter-a1-left'))    t('counter-a1-left',    totalA1 != null ? Math.max(totalA1 - learnedInA1, 0) : '—');
+  // عدّادات بسيطة (من التخزين المحلي)
+  function safeJson(k){ try { return JSON.parse(localStorage.getItem(k)||"null"); } catch { return null; } }
+  function setNum(sel, n){ const el=$(sel); if(el) el.textContent = String(n||0); }
+  function updateCounters(){
+    const hist = safeJson(STORE.HISTORY) || [];
+    const inProg = safeJson(STORE.IN_PROGRESS) || [];
+    const learned = (Array.isArray(hist)? hist.length : 0);
+    const inLearning = (Array.isArray(inProg)? inProg.length : 0);
+    // ملاحظة: هذه المؤشرات عامة — عدّلها حسب HTML لو أحببت
+    // إجمالي A1
+    setNum('#a1-total', learned + inLearning);
+    // كلمات تعلمتها
+    setNum('#a1-done', learned);
+    // المتبقي (تقريبي)
+    setNum('#a1-left', Math.max(0, (learned+inLearning? (learned+inLearning) : 0) - learned));
   }
 
-  function wireNav() {
-    const go = (p) => window.location.href = (window.buildUrl ? buildUrl(p) : p);
-
-    const goA1 = () => go(PAGES.A1 || 'level-a1.html');
-    // نربط على أكثر من محدِّد حتى لو تغيّر HTML
-    ['#card-a1', '#level-a1', '#level-a1-btn', '[data-level="a1"]', '.card-a1'].forEach(sel => {
-      const el = document.querySelector(sel);
-      if (el) {
-        el.style.cursor = 'pointer';
-        el.setAttribute('tabindex', '0');
-        el.addEventListener('click', goA1);
-        el.addEventListener('keydown', (e) => {
-          if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); goA1(); }
-        });
-      }
-    });
-
-    // رابط "مفتاح Gemini"
-    const keyLink = $('[data-nav="key.html"]') || $('.goto-key');
-    if (keyLink) keyLink.addEventListener('click', (e) => { e.preventDefault(); go(PAGES.KEY || 'key.html'); });
-
-    // زر الرجوع (إن وُجد)
-    const back = $('[data-nav="index.html"]');
-    if (back) back.addEventListener('click', (e) => { e.preventDefault(); go(PAGES.INDEX || 'index.html'); });
+  // ربط بطاقة A1 حتى لو ما عندها id معيّن
+  function findA1Card() {
+    // 1) id واضح
+    let el = document.getElementById("level-a1-btn") || document.getElementById("card-a1");
+    if (el) return el;
+    // 2) نص عربي/إنجليزي
+    el = $$("div,button,a").find(x=> /(^|\s)A1(\s|$)|المستوى\s*A1/i.test(x.textContent||""));
+    if (el) return el;
+    // 3) افتراضي: البطاقة الثالثة (غالبًا)
+    const cards = $$("section div, .grid > div, .card");
+    return cards[2] || cards[cards.length-1] || null;
   }
 
-  function init() { try { computeCounters(); } catch {} wireNav(); }
+  function bindA1() {
+    const a1 = findA1Card();
+    if (!a1) return;
+    a1.style.cursor = "pointer";
+    a1.addEventListener('click', (e)=>{
+      e.preventDefault();
+      window.location.href = build(PAGES.A1 || "level-a1.html");
+    }, { once:true });
+  }
 
-  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
-  else init();
+  async function main(){
+    try { await window.Auth?.silent?.(); } catch {}
+    updateCounters();
+    bindA1();
+
+    // إن وصلت إشعارات مزامنة، حدّث العدّاد
+    document.addEventListener("esa:drive-loaded", updateCounters);
+    document.addEventListener("esa:drive-saved",  updateCounters);
+  }
+
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", main);
+  } else {
+    main();
+  }
 })();
