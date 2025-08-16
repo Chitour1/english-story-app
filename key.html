@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>قصتي اللغوية — مفتاح Gemini</title>
+
+  <!-- Tailwind + الخطوط -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com"/>
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+  <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;700&family=Inter:wght@400;700&display=swap" rel="stylesheet"/>
+
+  <!-- CSS الموحّد -->
+  <link rel="stylesheet" href="./assets/css/styles.css"/>
+
+  <!-- GIS (يُستخدم داخل auth.js ولو لم تظهر الأزرار هنا) -->
+  <script src="https://apis.google.com/js/api.js" async defer></script>
+  <script src="https://accounts.google.com/gsi/client" async defer></script>
+</head>
+<body class="bg-slate-50 text-slate-800 min-h-screen pb-20" style="font-family:'Cairo',sans-serif">
+
+  <div class="container mx-auto max-w-3xl p-4 md:p-8">
+    <!-- ترويسة -->
+    <header class="mb-8">
+      <div class="flex items-center justify-between gap-4">
+        <a data-nav="index.html" class="text-sky-700 hover:underline flex items-center gap-1 cursor-pointer">
+          ← الرجوع للتسجيل
+        </a>
+        <h1 class="text-2xl md:text-3xl font-bold text-sky-600">إدخال مفتاح Gemini</h1>
+      </div>
+      <p class="mt-2 text-slate-600">
+        للحصول على مفتاح Gemini API، افتح
+        <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noopener" class="text-sky-700 hover:underline">Google AI Studio</a>
+        وأنشئ مفتاحًا جديدًا.
+      </p>
+    </header>
+
+    <!-- بطاقة إدخال المفتاح -->
+    <section class="bg-white rounded-xl shadow-md p-6 md:p-8">
+      <div class="flex items-center gap-3 mb-4">
+        <svg xmlns="http://www.w3.org/2000/svg" class="w-6 h-6 text-amber-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 9a2 2 0 0 1-2 2H6l-4 4V4c0-1.1.9-2 2-2h8a2 2 0 0 1 2 2v5Z"/><path d="M18 9h2a2 2 0 0 1 2 2v10l-4-4H8a2 2 0 0 1-2-2V9a2 2 0 0 1 2-2h2"/><path d="M22 12h-2"/><path d="M18 12h-2"/></svg>
+        <h2 class="text-xl font-bold">مفتاح Gemini API</h2>
+      </div>
+
+      <div class="space-y-3">
+        <label for="api-key-input" class="block text-sm font-medium text-slate-700">الصق المفتاح هنا</label>
+        <div class="flex flex-col sm:flex-row gap-2">
+          <input type="password" id="api-key-input" class="flex-grow p-3 border rounded-md font-english" placeholder="AIza..."/>
+          <button id="toggle-key-visibility" type="button" class="px-4 py-3 border rounded-md bg-white hover:bg-slate-50">إظهار</button>
+          <button id="save-api-key-btn" class="bg-sky-600 text-white px-6 py-3 rounded-md hover:bg-sky-700 transition">حفظ</button>
+        </div>
+
+        <p class="text-xs text-slate-500 mt-2">
+          يُخزَّن المفتاح محليًا في متصفحك فقط. يمكن تغييره لاحقًا من هذه الصفحة.
+        </p>
+      </div>
+
+      <hr class="my-6"/>
+
+      <div class="text-sm text-slate-600">
+        <p>بعد الحفظ سننقلك تلقائيًا إلى صفحة اختيار المستويات.</p>
+        <p class="mt-1">تأكد أنك سجّلت الدخول بحساب Google في الصفحة الأولى كي يتم حفظ تقدمك على Drive.</p>
+      </div>
+    </section>
+
+    <!-- تلميح -->
+    <section class="mt-6">
+      <div class="bg-white rounded-xl shadow p-4">
+        <h3 class="font-bold mb-2">تلميحات</h3>
+        <ul class="list-disc pr-5 space-y-1 text-slate-600">
+          <li>يمكنك الضغط على زر <strong>إظهار</strong> لمعاينة المفتاح قبل الحفظ.</li>
+          <li>ادعم صلاحية المفتاح عبر إنشاءه من حسابك الشخصي، وحدِّثه عند انتهاءه.</li>
+        </ul>
+      </div>
+    </section>
+  </div>
+
+  <!-- جذور الواجهات المشتركة -->
+  <div id="global-modal-root"></div>
+  <div id="screen-loader" class="hidden fixed inset-0 z-50 bg-black/50 backdrop-blur-sm">
+    <div class="absolute inset-0 flex items-center justify-center p-4">
+      <div class="bg-white rounded-xl p-6 w-full max-w-xs text-center shadow-2xl">
+        <div class="mx-auto mb-3 w-10 h-10 rounded-full border-4 border-slate-200 border-t-sky-600 animate-spin"></div>
+        <div id="screen-loader-text" class="font-bold">جاري التحميل…</div>
+      </div>
+    </div>
+  </div>
+
+  <footer id="legal-bar-root"></footer>
+
+  <!-- ترتيب التحميل مهم -->
+  <script src="./assets/js/config.js"></script>
+  <script src="./assets/js/ui.js"></script>
+  <script src="./assets/js/state.js"></script>
+  <script src="./assets/js/auth.js"></script>
+  <script src="./assets/js/common.js"></script>
+  <script src="./assets/js/main-key.js"></script>
+</body>
+</html>
