@@ -14,8 +14,8 @@
   <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700&display=swap" rel="stylesheet" />
 
   <style>
-    :root { color-scheme: light dark; }
-    body { font-family: "Cairo", system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans", "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol"; }
+    :root { color-scheme: light; }
+    body { font-family: "Cairo", system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial; }
     .card { background:#fff; border:1px solid #e2e8f0; border-radius:16px; box-shadow:0 10px 30px rgba(0,0,0,.04); }
     .hover-card:hover { box-shadow:0 20px 40px rgba(2,132,199,.12); transform: translateY(-2px); }
   </style>
@@ -64,21 +64,18 @@
 
     <!-- روابط الصفحات الرئيسية -->
     <section class="grid grid-cols-1 md:grid-cols-3 gap-6">
-      <!-- المستويات -->
       <a href="#" data-nav="levels.html" class="card hover-card p-6 block">
         <div class="text-4xl mb-3">🧭</div>
         <h3 class="text-xl font-bold">مستويات متدرجة</h3>
         <p class="text-slate-500 mt-1">ابدأ — A1 — وسائل مساعدة وتمارين وصوتيات.</p>
       </a>
 
-      <!-- مفتاح Gemini -->
       <a href="#" data-nav="key.html" class="card hover-card p-6 block">
         <div class="text-4xl mb-3">🔑</div>
         <h3 class="text-xl font-bold">مفتاح Gemini</h3>
         <p class="text-slate-500 mt-1">سندخل المفتاح في الخطوة التالية لتوليد الدروس.</p>
       </a>
 
-      <!-- معلومات الحفظ -->
       <div class="card p-6">
         <div class="text-4xl mb-3">🔒</div>
         <h3 class="text-xl font-bold">حفظ تقدّمك</h3>
@@ -98,28 +95,23 @@
     </div>
   </footer>
 
-  <!-- =========================================================
-       ترتيب السكربتات إلزامي: config → Google APIs → main-login → health-check
-       ========================================================= -->
+  <!-- ترتيب السكربتات (إلزامي) -->
 
   <!-- 1) إعدادات التطبيق -->
   <script src="assets/js/config.js"></script>
 
-  <!-- 2) مكتبات Google مع onload (تعريف الدوال يتم داخل main-login.js) -->
-  <script src="https://apis.google.com/js/api.js" onload="gapiLoaded()" async defer></script>
-  <script src="https://accounts.google.com/gsi/client" onload="gisLoaded()" async defer></script>
+  <!-- 2) مكتبات Google (بدون onload – الاعتماد على الاستطلاع داخل main-login.js) -->
+  <script src="https://apis.google.com/js/api.js" async defer></script>
+  <script src="https://accounts.google.com/gsi/client" async defer></script>
 
-  <!-- 3) منطق صفحة تسجيل الدخول (يعتمد على APP_CONFIG ويعرّف gapiLoaded/gisLoaded إذا لزم) -->
+  <!-- 3) منطق صفحة تسجيل الدخول -->
   <script src="assets/js/main-login.js"></script>
 
-  <!-- 4) فحص صحة الإعداد (اختياري أثناء الإعداد) -->
-  <script src="assets/js/health-check.js"></script>
+  <!-- لا تضف health-check.js هنا نهائيًا -->
 
   <noscript>
     <div class="container mx-auto max-w-3xl px-4 py-6">
-      <div class="card p-4 text-center">
-        الرجاء تفعيل JavaScript لاستخدام التطبيق.
-      </div>
+      <div class="card p-4 text-center">الرجاء تفعيل JavaScript لاستخدام التطبيق.</div>
     </div>
   </noscript>
 </body>
