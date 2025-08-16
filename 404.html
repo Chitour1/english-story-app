@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="utf-8">
+  <title>إعادة توجيه…</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta http-equiv="refresh" content="0; url=/english-story-app/index.html">
+  <style>
+    body{font-family:system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,"Noto Sans","Apple Color Emoji","Segoe UI Emoji","Segoe UI Symbol";background:#f8fafc;color:#0f172a;margin:0}
+    .wrap{min-height:100vh;display:grid;place-items:center;padding:2rem}
+    .card{background:#fff;border:1px solid #e2e8f0;border-radius:12px;box-shadow:0 10px 30px rgba(0,0,0,.04);padding:1.5rem;max-width:520px;width:100%;text-align:center}
+    .spinner{width:42px;height:42px;border:4px solid #e2e8f0;border-top-color:#0ea5e9;border-radius:50%;margin:0 auto 1rem;animation:spin 1s linear infinite}
+    @keyframes spin{to{transform:rotate(360deg)}}
+    a{color:#0ea5e9;text-decoration:none}
+    a:hover{text-decoration:underline}
+  </style>
+  <script>
+    (function () {
+      // قاعدة المستودع على GitHub Pages — عدّلها إذا غيّرت اسم الريبو
+      var BASE = '/english-story-app';
+
+      // لو كنّا داخل الريبو بالفعل نستخرج المسار بعده
+      var full = window.location.pathname + window.location.search + window.location.hash;
+      try {
+        var idx = full.indexOf(BASE);
+        if (idx > -1) {
+          var tail = full.slice(idx + BASE.length);
+          // نخزّن المسار الأصلي في الـ hash تحسبًا لاستخدامه لاحقًا
+          sessionStorage.setItem('last404Path', tail || '/');
+        }
+      } catch (_) {}
+
+      // إعادة التوجيه إلى الصفحة الرئيسية
+      var target = BASE + '/index.html';
+      // نضيف hash للمسار الأصلي (اختياري)
+      try {
+        var stored = sessionStorage.getItem('last404Path');
+        if (stored && stored !== '/') target += '#!' + encodeURIComponent(stored);
+      } catch (_) {}
+
+      // إعادة التوجيه الفورية
+      window.location.replace(target);
+    })();
+  </script>
+</head>
+<body>
+  <div class="wrap">
+    <div class="card">
+      <div class="spinner"></div>
+      <h1>إعادة توجيه…</h1>
+      <p>سيتم نقلك إلى الصفحة الرئيسية للتطبيق.</p>
+      <p><a href="/english-story-app/index.html">اضغط هنا إذا لم يتم التحويل تلقائيًا</a></p>
+    </div>
+  </div>
+</body>
+</html>
