@@ -1,132 +1,193 @@
 // assets/js/auth.js
-(function () {
-  const { GOOGLE, STORAGE } = window.APP_CONFIG;
+// طبقة موحّدة للدخول عبر Google + إدارة التوكن عبر localStorage
 
-  const SCOPES = GOOGLE.SCOPES.join(" ");
+(function () {
+  const CFG = (window.APP_CONFIG && window.APP_CONFIG.GOOGLE) || {};
+  const STORAGE = (window.APP_CONFIG && window.APP_CONFIG.STORAGE) || {};
+  const PREFIX = STORAGE.PREFIX || "english_story_app__";
+
   const K = {
-    HAS_CONSENT: STORAGE.PREFIX + "google_has_consent",
-    ACCESS_TOKEN: STORAGE.PREFIX + "google_access_token",
-    EXPIRES_AT: STORAGE.PREFIX + "google_expires_at",
+    TOKEN: PREFIX + "google_access_token",
+    EXPIRES_AT: PREFIX + "google_expires_at",
+    GRANTED: PREFIX + "google_granted", // "1" بعد الموافقة الأولى
+    USER: PREFIX + "google_user",
   };
 
+  // حالة داخلية
   let tokenClient = null;
-  let initDone = false;
+  let _token = safeGet(K.TOKEN, "");
+  let _expiresAt = Number(safeGet(K.EXPIRES_AT, "0")) || 0;
+  let _granted = safeGet(K.GRANTED, "0") === "1";
+  let _initStarted = false;
 
-  function _set(k, v) { try { localStorage.setItem(k, v); } catch {} }
-  function _get(k, d = "") { try { const v = localStorage.getItem(k); return v ?? d; } catch { return d; } }
+  // ========= أدوات مساعدة =========
+  function now() { return Date.now(); }
+  function safeGet(k, d = "") { try { return localStorage.getItem(k) ?? d; } catch { return d; } }
+  function safeSet(k, v) { try { localStorage.setItem(k, String(v)); } catch {} }
+  function safeDel(k) { try { localStorage.removeItem(k); } catch {} }
 
-  function _setToken(token, expiresAtMs) {
-    _set(K.ACCESS_TOKEN, token || "");
-    _set(K.EXPIRES_AT, String(expiresAtMs || 0));
+  function hasValidToken() {
+    return !!_token && now() < (_expiresAt - 60 * 1000); // هامش دقيقة
   }
 
-  function _getToken() {
-    const t = _get(K.ACCESS_TOKEN, "");
-    const e = parseInt(_get(K.EXPIRES_AT, "0"), 10) || 0;
-    return { token: t, exp: e };
-  }
-
-  function _hasValidToken() {
-    const { token, exp } = _getToken();
-    // هامش 30 ثانية قبل الانتهاء
-    return Boolean(token) && Date.now() < (exp - 30_000);
-  }
-
-  function init() {
-    if (initDone) return;
-    initDone = true;
-
-    // لو رجعنا يوماً بتصريح ضمن #fragment (كخطة احتياط) نظّف العنوان وخزّنه
-    if (location.hash && location.hash.includes("access_token=")) {
-      const p = new URLSearchParams(location.hash.slice(1));
-      const at = p.get("access_token");
-      const ex = parseInt(p.get("expires_in") || "3600", 10);
-      if (at) _setToken(at, Date.now() + ex * 1000);
-      history.replaceState({}, document.title, location.pathname + location.search);
-    }
-
-    // تحضير عميل Google Identity Services
-    window.gisLoaded = () => {
-      tokenClient = google.accounts.oauth2.initTokenClient({
-        client_id: GOOGLE.CLIENT_ID,
-        scope: SCOPES,
-        callback: _onTokenResponse,
-      });
-    };
-    // إن كانت المكتبة محمّلة بالفعل
-    if (window.google?.accounts?.oauth2) window.gisLoaded();
-  }
-
-  function _onTokenResponse(resp) {
-    if (resp?.access_token) {
-      // GIS لا يعيد expires_in هنا دائماً، نضبط 55 دقيقة افتراضياً
-      _setToken(resp.access_token, Date.now() + 55 * 60 * 1000);
-      _set(K.HAS_CONSENT, "1");
-      // أخفِ شريط التنبيه إن وُجد
-      window.UI?.hideBanner?.("signin");
-      return;
-    }
-    if (resp?.error) {
-      console.warn("GIS error:", resp.error);
-      if (resp.error === "access_denied") _set(K.HAS_CONSENT, "0");
-    }
-  }
-
-  async function ensureAccessToken() {
-    init();
-    if (_hasValidToken()) return _getToken().token;
-
-    const hasConsentBefore = _get(K.HAS_CONSENT, "0") === "1";
-
-    // لو لم يجهز العميل بعد (حالة تحميل بطيء)
-    if (!tokenClient && window.google?.accounts?.oauth2) window.gisLoaded();
-    if (!tokenClient) await new Promise(r => setTimeout(r, 150));
-
-    return new Promise((resolve, reject) => {
-      if (!tokenClient) return reject(new Error("GIS not loaded"));
-      tokenClient.callback = (resp) => {
-        if (resp?.access_token) return resolve(resp.access_token);
-        return reject(new Error(resp?.error || "no_token"));
-      };
-      tokenClient.requestAccessToken({ prompt: hasConsentBefore ? "" : "consent" });
+  // انتظار تحميل مكتبة GIS
+  function waitForGIS() {
+    return new Promise((resolve) => {
+      if (window.google && window.google.accounts && window.google.accounts.oauth2) {
+        resolve(); return;
+      }
+      let tries = 0;
+      const t = setInterval(() => {
+        tries++;
+        if (window.google && window.google.accounts && window.google.accounts.oauth2) {
+          clearInterval(t); resolve();
+        } else if (tries > 200) { // ~10 ثوانٍ
+          clearInterval(t); resolve();
+        }
+      }, 50);
     });
   }
 
-  // زر تفاعلي: مرة واحدة يفرض consent، ثم التجديد صامتاً
-  function signInInteractive() {
-    _set(K.HAS_CONSENT, "0"); // إجبار نافذة موافقة مرة واحدة إن لم تُمنح سابقاً
-    return ensureAccessToken();
-  }
+  // تهيئة العميل
+  async function init() {
+    if (_initStarted) return;
+    _initStarted = true;
+    await waitForGIS();
 
-  function signOut() {
-    const { token } = _getToken();
-    if (token && window.google?.accounts?.oauth2) {
-      try { google.accounts.oauth2.revoke(token, () => {}); } catch {}
+    if (window.google && window.google.accounts && window.google.accounts.oauth2) {
+      tokenClient = window.google.accounts.oauth2.initTokenClient({
+        client_id: (CFG.CLIENT_ID || "").trim(),
+        scope: Array.isArray(CFG.SCOPES) ? CFG.SCOPES.join(" ") : (CFG.SCOPES || ""),
+        callback: handleTokenResponse,
+        error_callback: (err) => console.warn("GIS error:", err),
+      });
     }
-    _setToken("", 0);
-    _set(K.HAS_CONSENT, "0");
   }
 
-  // استدعاء fetch مع توكن Drive جاهز + إعادة المحاولة الصامتة عند 401
-  async function driveFetch(url, options = {}) {
-    const at1 = await ensureAccessToken();
-    const opts = { ...options, headers: { ...(options.headers || {}), Authorization: `Bearer ${at1}` } };
-    const res = await fetch(url, opts);
-    if (res.status !== 401) return res;
+  // حفظ حالة التوكن
+  function setToken(resp) {
+    _token = resp.access_token;
+    const expiresIn = Number(resp.expires_in || 3600);
+    _expiresAt = now() + (expiresIn * 1000);
+    _granted = true;
 
-    // إعادة محاولة صامتة مرّة واحدة
-    _set(K.HAS_CONSENT, "1");
-    const at2 = await ensureAccessToken();
-    const opts2 = { ...options, headers: { ...(options.headers || {}), Authorization: `Bearer ${at2}` } };
-    return fetch(url, opts2);
+    safeSet(K.TOKEN, _token);
+    safeSet(K.EXPIRES_AT, String(_expiresAt));
+    safeSet(K.GRANTED, "1");
   }
 
+  // ردّ GIS
+  function handleTokenResponse(resp) {
+    if (resp && resp.access_token) {
+      setToken(resp);
+      // تحديث المستخدم اختياري
+      fetchUserProfile().catch(() => {});
+    } else if (resp && resp.error) {
+      console.warn("GIS token error:", resp.error);
+    }
+  }
+
+  // محاولة صامتة للحصول على توكن (بعد موافقة سابقة)
+  function requestSilent() {
+    return new Promise((resolve, reject) => {
+      if (!tokenClient) return reject(new Error("GIS not ready"));
+      tokenClient.callback = (resp) => {
+        if (resp && resp.access_token) { setToken(resp); resolve(_token); }
+        else reject(new Error(resp && resp.error ? resp.error : "silent_failed"));
+      };
+      tokenClient.requestAccessToken({ prompt: "" }); // بدون نوافذ
+    });
+  }
+
+  // طلب تفاعلي (أول مرّة فقط أو عند الحاجة)
+  function requestInteractive() {
+    return new Promise((resolve, reject) => {
+      if (!tokenClient) return reject(new Error("GIS not ready"));
+      tokenClient.callback = (resp) => {
+        if (resp && resp.access_token) { setToken(resp); resolve(_token); }
+        else reject(new Error(resp && resp.error ? resp.error : "interactive_failed"));
+      };
+      tokenClient.requestAccessToken({ prompt: "consent" });
+    });
+  }
+
+  // استرجاع الملف الشخصي (اختياري لعرض الاسم/الصورة)
+  async function fetchUserProfile() {
+    if (!hasValidToken()) return null;
+    const res = await fetch("https://www.googleapis.com/oauth2/v3/userinfo", {
+      headers: { Authorization: `Bearer ${_token}` },
+    });
+    if (!res.ok) return null;
+    const profile = await res.json();
+    safeSet(K.USER, JSON.stringify(profile || {}));
+    return profile;
+  }
+
+  // API عام:
+
+  // ستُناديه الصفحات عند التحميل
+  async function ensureAccessToken({ interactiveIfNeeded = false } = {}) {
+    await init();
+
+    if (hasValidToken()) return _token;
+
+    if (_granted) {
+      try { await requestSilent(); return _token; }
+      catch (e) { /* سنجرّب تفاعليًا لاحقًا إن طُلب */ }
+    }
+
+    if (interactiveIfNeeded) {
+      await requestInteractive();
+      return _token;
+    }
+
+    // لم نستطع الصمت + لا نريد نافذة الآن
+    throw new Error("no_token");
+  }
+
+  // يستدعى مرة واحدة من المستخدم (زر تسجيل الدخول)
+  async function signInInteractive() {
+    await init();
+    await requestInteractive();
+    return _token;
+  }
+
+  // تسجيل خروج
+  async function signOut() {
+    try {
+      if (_token && window.google && window.google.accounts && window.google.accounts.oauth2) {
+        await window.google.accounts.oauth2.revoke(_token);
+      }
+    } catch {}
+    _token = ""; _expiresAt = 0; _granted = false;
+    [K.TOKEN, K.EXPIRES_AT, K.GRANTED, K.USER].forEach(safeDel);
+  }
+
+  // جلب الحالة
+  function isSignedIn() { return hasValidToken() || _granted; }
+  function getToken() { return _token; }
+  function getExpiresAt() { return _expiresAt; }
+  function getUser() {
+    try { return JSON.parse(safeGet(K.USER, "{}")); } catch { return {}; }
+  }
+
+  // تحديث كل بضع دقائق بصمت إن أمكن
+  setInterval(async () => {
+    try {
+      if (!_granted) return;
+      if (hasValidToken()) return;
+      await ensureAccessToken({ interactiveIfNeeded: false });
+    } catch { /* تجاهل */ }
+  }, 3 * 60 * 1000);
+
+  // تعريض الدوال
   window.Auth = {
     init,
-    ensureAccessToken,
-    signInInteractive,
+    ensureAccessToken,      // يحاول الصمت، يطلب نافذة فقط لو interactiveIfNeeded=true
+    signInInteractive,      // استدعِه من زر "تسجيل الدخول" مرة واحدة
     signOut,
-    hasValidToken: _hasValidToken,
-    driveFetch,
+
+    // أدوات
+    hasValidToken, isSignedIn, getToken, getExpiresAt, fetchUserProfile,
   };
 })();
