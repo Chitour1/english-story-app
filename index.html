@@ -1,99 +1,92 @@
 <!DOCTYPE html>
 <html lang="ar" dir="rtl">
 <head>
-  <meta charset="UTF-8" />
+  <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>قصتي اللغوية — تسجيل الدخول</title>
+  <title>قصتي اللغوية - الصفحة الرئيسية</title>
 
-  <!-- Tailwind + خطوط -->
+  <!-- Tailwind -->
   <script src="https://cdn.tailwindcss.com"></script>
+
+  <!-- Fonts -->
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;700&family=Inter:wght@400;700&display=swap" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700&display=swap" rel="stylesheet" />
 
-  <!-- ستايلاتك -->
-  <link rel="stylesheet" href="./assets/css/styles.css" />
-
-  <!-- دوال onload آمنة (تستدعي دوال auth.js إن وُجدت) -->
-  <script>
-    window.__gapiOnLoad = function(){ if (window.gapiLoaded) window.gapiLoaded(); };
-    window.__gisOnLoad  = function(){ if (window.gisLoaded)  window.gisLoaded();  };
-  </script>
-
-  <!-- لإظهار رسالة لطيفة إن كان الجافاسكربت متوقفاً -->
-  <noscript>
-    <style>body{opacity:.6} .nojs{display:block!important}</style>
-  </noscript>
+  <style>
+    :root { color-scheme: light; }
+    body { font-family: "Cairo", system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial; }
+    .card { background:#fff; border:1px solid #e2e8f0; border-radius:16px; box-shadow:0 10px 30px rgba(0,0,0,.04); }
+    .hover-card:hover { box-shadow:0 20px 40px rgba(2,132,199,.12); transform: translateY(-2px); }
+  </style>
 </head>
+<body class="bg-slate-50 text-slate-800 min-h-screen pb-24">
 
-<body class="bg-slate-50 text-slate-800 min-h-screen pb-24" style="font-family:'Cairo',sans-serif">
-  <div class="nojs hidden mx-auto max-w-2xl p-4 my-6 rounded-lg bg-amber-50 border border-amber-200 text-amber-800">
-    هذا الموقع يحتاج لتفعيل الجافاسكربت ليعمل بشكل صحيح.
-  </div>
+  <header class="container mx-auto max-w-5xl px-4 pt-10 text-center">
+    <h1 class="text-4xl md:text-5xl font-extrabold text-sky-600 mb-2">قصتي اللغوية</h1>
+    <p class="text-slate-600 text-lg">تعلّم مفردات الإنجليزية عبر قصص يصنعها الذكاء الاصطناعي</p>
+  </header>
 
-  <div class="container mx-auto max-w-5xl p-4 md:p-10">
-    <!-- العنوان -->
-    <header class="text-center mb-10">
-      <h1 class="text-4xl md:text-5xl font-bold text-sky-700 mb-2">قصتي اللغوية</h1>
-      <p class="text-lg text-slate-600">تعلّم مفردات الإنجليزية عبر قصص يصنعها الذكاء الاصطناعي</p>
-    </header>
+  <main class="container mx-auto max-w-5xl px-4 mt-10 space-y-10">
 
-    <!-- بطاقة تسجيل الدخول -->
-    <section class="bg-white rounded-2xl shadow-md p-6 md:p-8 mb-8">
-      <div class="flex flex-col items-center gap-4">
-        <button id="btn-google-signin"
-                class="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-md transition text-base md:text-lg">
-          تسجيل الدخول لحفظ التقدّم مع Google
-        </button>
-        <p class="text-slate-600 text-center">
-          بعد تسجيل الدخول سننقلك تلقائيًا إلى إدخال مفتاح <span class="font-english">Gemini</span> أو إلى اختيار المستويات.
+    <!-- بطاقة الحساب + تسجيل الدخول -->
+    <section class="card p-6 md:p-8">
+      <div class="flex flex-col items-center gap-5">
+        <!-- زر الدخول -->
+        <button id="signin-btn"
+        onclick="window.__signinNow && window.__signinNow()"
+        class="px-6 py-3 rounded-lg bg-sky-600 text-white font-bold hover:bg-sky-700 disabled:opacity-50 disabled:pointer-events-none">
+  تسجيل الدخول مع Google لحفظ التقدّم
+</button>
+
+
+        <!-- معلومات المستخدم (مخفية مبدئياً) -->
+        <div id="user-info" class="hidden relative">
+          <button id="user-menu-btn" class="flex items-center gap-3 px-4 py-2 bg-white border rounded-lg hover:bg-slate-50">
+            <img id="user-avatar" class="w-10 h-10 rounded-full border" alt="User Avatar" />
+            <span id="user-name" class="text-sm"></span>
+          </button>
+          <div id="user-menu"
+               class="hidden absolute left-0 mt-2 w-60 bg-white rounded-xl shadow-xl p-2 text-right z-10 border">
+            <button id="btn-export" class="w-full text-right px-3 py-2 hover:bg-slate-100 rounded">⬇️ تصدير البيانات</button>
+            <label class="w-full block text-right px-3 py-2 hover:bg-slate-100 rounded cursor-pointer">
+              ⬆️ استيراد البيانات
+              <input id="import-input" type="file" accept="application/json" class="hidden" />
+            </label>
+            <button id="reset-progress-btn-menu" class="w-full text-right px-3 py-2 text-red-600 hover:bg-red-50 rounded">↩️ إعادة الضبط</button>
+            <button id="signout-btn" class="w-full text-right px-3 py-2 bg-red-500 text-white rounded-md hover:bg-red-600 mt-1">تسجيل الخروج</button>
+          </div>
+        </div>
+
+        <p class="text-slate-500 text-center">
+          بعد تسجيل الدخول سننقلك تلقائيًا إلى إدخال مفتاح <span class="font-bold">Gemini</span> أو إلى اختيار المستويات.
         </p>
       </div>
     </section>
 
-    <!-- البطاقات الرئيسية -->
+    <!-- روابط الصفحات الرئيسية -->
     <section class="grid grid-cols-1 md:grid-cols-3 gap-6">
-      <!-- حفظ التقدّم -->
-      <a href="#" data-nav="levels.html"
-         class="block bg-white rounded-xl shadow p-6 hover:shadow-lg transition group">
-        <div class="text-4xl mb-3">🔒</div>
-        <h3 class="text-xl font-bold mb-1">حفظ تقدّمك</h3>
-        <p class="text-slate-600">
-          تقدّمك يُحفَظ في <span class="font-english">Google Drive</span> (مجلد <span class="font-english">AppData</span>) عند تسجيل الدخول.
-        </p>
-      </a>
-
-      <!-- مفتاح Gemini -->
-      <a href="#" data-nav="key.html"
-         class="block bg-white rounded-xl shadow p-6 hover:shadow-lg transition group">
-        <div class="text-4xl mb-3">🔑</div>
-        <h3 class="text-xl font-bold mb-1"><span class="font-english">Gemini</span> مفتاح</h3>
-        <p class="text-slate-600">سندخل المفتاح في الخطوة التالية لتوليد الدروس.</p>
-      </a>
-
-      <!-- المستويات -->
-      <a href="#" data-nav="levels.html"
-         class="block bg-white rounded-xl shadow p-6 hover:shadow-lg transition group">
+      <a href="#" data-nav="levels.html" class="card hover-card p-6 block">
         <div class="text-4xl mb-3">🧭</div>
-        <h3 class="text-xl font-bold mb-1">مستويات متدرّجة</h3>
-        <p class="text-slate-600">ابدأ — A1 — وسائل مساعدة وتمارين وصوتيات.</p>
+        <h3 class="text-xl font-bold">مستويات متدرجة</h3>
+        <p class="text-slate-500 mt-1">ابدأ — A1 — وسائل مساعدة وتمارين وصوتيات.</p>
       </a>
-    </section>
-  </div>
 
-  <!-- عناصر واجهة مشتركة (مودال/لودر) -->
-  <div id="global-modal-root"></div>
+      <a href="#" data-nav="key.html" class="card hover-card p-6 block">
+        <div class="text-4xl mb-3">🔑</div>
+        <h3 class="text-xl font-bold">مفتاح Gemini</h3>
+        <p class="text-slate-500 mt-1">سندخل المفتاح في الخطوة التالية لتوليد الدروس.</p>
+      </a>
 
-  <div id="screen-loader" class="hidden fixed inset-0 z-50 bg-black/50 backdrop-blur-sm">
-    <div class="absolute inset-0 flex items-center justify-center p-4">
-      <div class="bg-white rounded-xl p-6 w-full max-w-xs text-center shadow-2xl">
-        <div class="mx-auto mb-3 w-10 h-10 rounded-full border-4 border-slate-200 border-t-sky-600 animate-spin"></div>
-        <div id="screen-loader-text" class="font-bold">جاري التحميل…</div>
+      <div class="card p-6">
+        <div class="text-4xl mb-3">🔒</div>
+        <h3 class="text-xl font-bold">حفظ تقدّمك</h3>
+        <p class="text-slate-500 mt-1">تقدّمك يُحفَظ في Google Drive (AppData) عند تسجيل الدخول.</p>
       </div>
-    </div>
-  </div>
+    </section>
+  </main>
 
-  <!-- شريط قانوني ثابت -->
+  <!-- تذييل -->
   <footer class="fixed inset-x-0 bottom-0 z-40 bg-white/95 backdrop-blur border-t border-slate-200">
     <div class="container mx-auto max-w-5xl px-4 py-3 flex flex-col sm:flex-row items-center justify-between gap-2 text-sm">
       <div class="flex items-center gap-4">
@@ -104,16 +97,24 @@
     </div>
   </footer>
 
-  <!-- ترتيب التحميل مهم: ملفاتك ثم مكتبات Google -->
-  <script src="./assets/js/config.js"></script>
-  <script src="./assets/js/ui.js"></script>
-  <script src="./assets/js/state.js"></script>
-  <script src="./assets/js/auth.js"></script>
-  <script src="./assets/js/common.js"></script>
-  <script src="./assets/js/main-login.js"></script>
+  <!-- ترتيب السكربتات (إلزامي) -->
 
-  <!-- مكتبات Google (تستدعي الدوال عبر الـ stubs أعلاه) -->
-  <script src="https://apis.google.com/js/api.js" async defer onload="__gapiOnLoad()"></script>
-  <script src="https://accounts.google.com/gsi/client" async defer onload="__gisOnLoad()"></script>
+  <!-- 1) إعدادات التطبيق -->
+  <script src="assets/js/config.js"></script>
+
+  <!-- 2) مكتبات Google (بدون onload – الاعتماد على الاستطلاع داخل main-login.js) -->
+  <script src="https://apis.google.com/js/api.js" async defer></script>
+  <script src="https://accounts.google.com/gsi/client" async defer></script>
+
+  <!-- 3) منطق صفحة تسجيل الدخول -->
+  <script src="assets/js/main-login.js"></script>
+
+  <!-- لا تضف health-check.js هنا نهائيًا -->
+
+  <noscript>
+    <div class="container mx-auto max-w-3xl px-4 py-6">
+      <div class="card p-4 text-center">الرجاء تفعيل JavaScript لاستخدام التطبيق.</div>
+    </div>
+  </noscript>
 </body>
 </html>
