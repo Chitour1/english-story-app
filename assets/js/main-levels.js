@@ -1,76 +1,59 @@
 // assets/js/main-levels.js
-// يعتمد على: ROUTER, STATE, UI, APP_CONFIG (جميعها مُعدة مسبقًا)
 (function () {
-  const qs  = (s, r = document) => r.querySelector(s);
-  const qsa = (s, r = document) => Array.from(r.querySelectorAll(s));
+  const $ = (s, r = document) => r.querySelector(s);
+  const CFG   = window.APP_CONFIG || {};
+  const PAGES = CFG.PAGES || {};
+  const S     = CFG.STORAGE || {};
 
-  const els = {
-    a1Card:        null, // #level-a1-btn
-    disabledCards: [],   // .level-card-disabled
-    // (اختياري) عناصر إحصاءات إن وُجدت في الصفحة
-    statTotal:     null, // #total-words
-    statLearned:   null, // #learned-words
-    statRemain:    null, // #remaining-words
-  };
+  function t(id, v) { const el = $('#' + id); if (el) el.textContent = v; }
 
-  function linkDom() {
-    els.a1Card        = qs('#level-a1-btn');
-    els.disabledCards = qsa('.level-card-disabled');
-    els.statTotal     = qs('#total-words');
-    els.statLearned   = qs('#learned-words');
-    els.statRemain    = qs('#remaining-words');
+  function computeCounters() {
+    const a1List = (window.A1_WORDS || window.a1Words || []); // من state.js
+    const totalA1 = Array.isArray(a1List) ? a1List.length : null;
+
+    const hist   = window.safeGetJson ? safeGetJson(S.HISTORY, [])    : [];
+    const inProg = window.safeGetJson ? safeGetJson(S.IN_PROGRESS, []) : [];
+    const learned = new Set();
+    hist.forEach(h => (h?.learnedWords || []).forEach(w => learned.add(String(w).toLowerCase())));
+    inProg.forEach(it => it?.word && learned.add(String(it.word).toLowerCase()));
+
+    const learnedInA1 = a1List && a1List.length
+      ? [...learned].filter(w => a1List.includes(w)).length
+      : learned.size;
+
+    if ($('#counter-a1-total'))   t('counter-a1-total',   totalA1 ?? '—');
+    if ($('#counter-a1-learned')) t('counter-a1-learned', learnedInA1);
+    if ($('#counter-a1-left'))    t('counter-a1-left',    totalA1 != null ? Math.max(totalA1 - learnedInA1, 0) : '—');
   }
 
-  function bindEvents() {
-    // فتح مستوى A1
-    els.a1Card?.addEventListener('click', () => {
-      ROUTER.go(APP_CONFIG.PAGES.A1);
+  function wireNav() {
+    const go = (p) => window.location.href = (window.buildUrl ? buildUrl(p) : p);
+
+    const goA1 = () => go(PAGES.A1 || 'level-a1.html');
+    // نربط على أكثر من محدِّد حتى لو تغيّر HTML
+    ['#card-a1', '#level-a1', '#level-a1-btn', '[data-level="a1"]', '.card-a1'].forEach(sel => {
+      const el = document.querySelector(sel);
+      if (el) {
+        el.style.cursor = 'pointer';
+        el.setAttribute('tabindex', '0');
+        el.addEventListener('click', goA1);
+        el.addEventListener('keydown', (e) => {
+          if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); goA1(); }
+        });
+      }
     });
 
-    // إظهار “قريبًا” على البطاقات الموقوفة
-    els.disabledCards.forEach(card => {
-      card.style.cursor = 'not-allowed';
-      card.addEventListener('click', () => {
-        UI.showToast('هذا المستوى قيد الإعداد. قريبًا بإذن الله.', { type: 'warning' });
-      });
-    });
+    // رابط "مفتاح Gemini"
+    const keyLink = $('[data-nav="key.html"]') || $('.goto-key');
+    if (keyLink) keyLink.addEventListener('click', (e) => { e.preventDefault(); go(PAGES.KEY || 'key.html'); });
+
+    // زر الرجوع (إن وُجد)
+    const back = $('[data-nav="index.html"]');
+    if (back) back.addEventListener('click', (e) => { e.preventDefault(); go(PAGES.INDEX || 'index.html'); });
   }
 
-  // (اختياري) إحصاءات بسيطة إن وُجدت عناصرها
-  function renderStatsIfAny() {
-    if (!els.statTotal && !els.statLearned && !els.statRemain) return;
+  function init() { try { computeCounters(); } catch {} wireNav(); }
 
-    try {
-      const st = STATE.readLocalState();
-      const wordsInProgress = Array.isArray(st.wordsInProgress) ? st.wordsInProgress : [];
-      const masteredWords   = Array.isArray(st.masteredWords)   ? st.masteredWords   : [];
-      // إجمالي A1 — نحاول قراءته من STATE.A1_WORDS إن توفّر
-      const A1 = Array.isArray(STATE.A1_WORDS) ? STATE.A1_WORDS : [];
-      const total = A1.length || 0;
-      const learnedCount = new Set([
-        ...wordsInProgress.map(w => w.word),
-        ...masteredWords
-      ]).size;
-      const remaining = total > 0 ? Math.max(0, total - learnedCount) : 0;
-
-      if (els.statTotal)   els.statTotal.textContent   = String(total);
-      if (els.statLearned) els.statLearned.textContent = String(learnedCount);
-      if (els.statRemain)  els.statRemain.textContent  = String(remaining);
-    } catch (e) {
-      // إحصاءات اختيارية — نتجاهل أي خطأ بهدوء
-      console.warn('levels stats render skipped:', e);
-    }
-  }
-
-  function init() {
-    linkDom();
-    bindEvents();
-    renderStatsIfAny();
-  }
-
-  if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', init);
-  } else {
-    init();
-  }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
+  else init();
 })();
