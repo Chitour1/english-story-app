@@ -1,6 +1,6 @@
 // assets/js/main-login.js
-// يعمل مع APP_CONFIG (config.js) ويُهيّئ gapi/gsi تلقائياً سواء استخدمت onload في <script> أو لا.
-// بعد نجاح الدخول: إن وُجد مفتاح Gemini في التخزين => levels.html وإلا => key.html
+// تسجيل الدخول يعمل حتى لو سكربتات Google لم تُحمَّل بعد.
+// يحقن السكربتات تلقائياً ويستخدم APP_CONFIG للتوجيه.
 
 (function () {
   const CFG   = window.APP_CONFIG || {};
@@ -9,6 +9,7 @@
   const G     = CFG.GOOGLE  || {};
 
   const SCOPES = Array.isArray(G.SCOPES) ? G.SCOPES.join(' ') : (G.SCOPES || '');
+
   const gotoPage = (name) =>
     (window.goto ? window.goto(name) :
       (window.location.href = (window.buildUrl ? window.buildUrl(name) : name)));
@@ -29,140 +30,127 @@
   const userMenu    = $('#user-menu');
   const btnExport   = $('#btn-export');
   const importInput = $('#import-input');
-  const btnReset    = $('#reset-progress-btn-menu');
   const signoutBtn  = $('#signout-btn');
 
-  let gapiInited = false;
-  let gisInited  = false;
-  let tokenClient = null;
-  let gapiPromise = null;
-  let gisPromise  = null;
-
-  // --- تهيئة gapi حتى لو لم نستخدم onload في <script> ---
-  function ensureGapi() {
-    if (gapiInited) return Promise.resolve();
-    if (gapiPromise) return gapiPromise;
-
-    gapiPromise = new Promise((resolve) => {
-      const start = Date.now();
-      const tick = () => {
-        if (window.gapi && window.gapi.load) {
-          try {
-            window.gapi.load('client', () => {
-              window.gapi.client.init({}).then(() => {
-                gapiInited = true;
-                maybeEnableSignin();
-                tryAutoRedirect();
-                resolve();
-              }).catch(() => { gapiInited = true; maybeEnableSignin(); resolve(); });
-            });
-          } catch { setTimeout(tick, 150); }
-        } else if (Date.now() - start < 15000) {
-          setTimeout(tick, 150);
-        } else {
-          resolve(); // لا نتوقف، نكمل بدون gapi (لن يعمل Drive لكن زر الدخول لن ينهار)
-        }
-      };
-      tick();
+  // ---------- أدوات تحميل سكربت ----------
+  function loadScript(src, { timeout = 20000 } = {}) {
+    return new Promise((resolve, reject) => {
+      // إن كان محقونًا سابقًا
+      if ([...document.scripts].some(s => s.src === src)) {
+        resolve(); return;
+      }
+      const s = document.createElement('script');
+      s.src = src; s.async = true; s.defer = true;
+      s.onload = () => resolve();
+      s.onerror = () => reject(new Error('Failed to load ' + src));
+      document.head.appendChild(s);
+      setTimeout(() => resolve(), timeout); // لا نعلّق للأبد
     });
-    return gapiPromise;
   }
 
-  // --- تهيئة Google Identity Services (GIS) ---
-  function ensureGIS() {
-    if (gisInited && tokenClient) return Promise.resolve();
-    if (gisPromise) return gisPromise;
+  // ---------- تهيئة gapi/gsi ----------
+  let gapiReady = false, gisReady = false, tokenClient = null;
 
-    gisPromise = new Promise((resolve) => {
-      const start = Date.now();
-      const tick = () => {
-        const oauth2 = window.google && window.google.accounts && window.google.accounts.oauth2;
-        if (oauth2) {
-          try {
-            tokenClient = oauth2.initTokenClient({
-              client_id: G.CLIENT_ID || '',
-              scope: SCOPES,
-              callback: onTokenReceived
-            });
-            gisInited = true;
-            maybeEnableSignin();
-            resolve();
-          } catch { setTimeout(tick, 150); }
-        } else if (Date.now() - start < 15000) {
-          setTimeout(tick, 150);
-        } else {
-          resolve();
-        }
-      };
-      tick();
-    });
-    return gisPromise;
+  async function ensureGapi() {
+    if (gapiReady) return;
+    if (!window.gapi || !window.gapi.load) {
+      await loadScript('https://apis.google.com/js/api.js');
+    }
+    if (window.gapi?.load) {
+      await new Promise((res) => {
+        try {
+          window.gapi.load('client', () => {
+            window.gapi.client.init({}).then(() => {
+              gapiReady = true; res();
+            }).catch(() => { gapiReady = true; res(); });
+          });
+        } catch { res(); }
+      });
+    }
   }
 
-  // --- دعم onload في وسوم السكربت إن وُجدت ---
+  async function ensureGIS() {
+    if (gisReady && tokenClient) return;
+    if (!window.google?.accounts?.oauth2) {
+      await loadScript('https://accounts.google.com/gsi/client');
+    }
+    if (window.google?.accounts?.oauth2) {
+      try {
+        tokenClient = window.google.accounts.oauth2.initTokenClient({
+          client_id: G.CLIENT_ID || '',
+          scope: SCOPES,
+          callback: onTokenReceived,
+        });
+        gisReady = true;
+        enableSignin(true);
+      } catch {
+        // يظل الزر مفعّل، لكن قد نحتاج إعادة المحاولة بعد قليل
+      }
+    }
+  }
+
+  // نوفّر دوال onload لمن اختار استعمالها في <script>
   window.gapiLoaded = () => { ensureGapi(); };
   window.gisLoaded  = () => { ensureGIS();  };
 
-  // --- ما بعد استلام التوكن ---
+  // ---------- بعد الحصول على التوكن ----------
   async function onTokenReceived(resp) {
     if (resp?.error) return;
     try {
       window.gapi?.client?.setToken?.({ access_token: resp.access_token });
 
-      // تعبئة بيانات المستخدم (اختياري)
+      // جلب ملف المستخدم (اختياري)
       try {
         const r = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
           headers: { Authorization: `Bearer ${resp.access_token}` }
         });
         if (r.ok) {
-          const profile = await r.json();
-          if (userName) userName.textContent = profile.given_name || profile.name || '';
-          if (userAvatar && profile.picture) userAvatar.src = profile.picture;
+          const p = await r.json();
+          if (userName)  userName.textContent = p.given_name || p.name || '';
+          if (userAvatar && p.picture) userAvatar.src = p.picture;
           userInfo?.classList.remove('hidden');
           signinBtn?.classList.add('hidden');
         }
       } catch {}
 
-      // تحويل حسب وجود مفتاح Gemini
+      // توجيه حسب وجود مفتاح Gemini
       if (hasApiKey()) gotoPage(PAGES.LEVELS || 'levels.html');
       else             gotoPage(PAGES.KEY    || 'key.html');
+
     } catch (e) {
-      console.error('Token handling error:', e);
+      console.error(e);
+      alert('حدث خطأ أثناء إتمام تسجيل الدخول.');
     }
   }
 
-  // --- تمكين زر الدخول عند الجاهزية ---
-  function maybeEnableSignin() {
-    if (!signinBtn) return;
-    const ready = !!tokenClient; // يكفي GIS لبدء الدخول
-    signinBtn.disabled = !ready;
+  // ---------- ربط الواجهة ----------
+  function enableSignin(isReady) {
+    if (signinBtn) signinBtn.disabled = !isReady;
   }
 
-  // --- تحويل تلقائي إن وُجد توكن سابق ---
-  function tryAutoRedirect() {
-    try {
-      const tok = window.gapi?.client?.getToken?.();
-      if (tok?.access_token) {
-        if (hasApiKey()) gotoPage(PAGES.LEVELS || 'levels.html');
-        else             gotoPage(PAGES.KEY    || 'key.html');
-      }
-    } catch {}
-  }
-
-  // --- ربط زر الدخول ---
   function bindSignin() {
     if (!signinBtn) return;
     signinBtn.addEventListener('click', async () => {
+      // نضمن جاهزية المكتبات أولاً
       await Promise.all([ensureGIS(), ensureGapi()]);
+
+      if (!tokenClient) {
+        // محاولة ثانية سريعة: قد يكون السكربت وصل للتو
+        await ensureGIS();
+      }
+
       if (tokenClient) {
-        tokenClient.requestAccessToken({ prompt: 'consent' });
+        try {
+          tokenClient.requestAccessToken({ prompt: 'consent' });
+        } catch {
+          alert('لم نتمكن من فتح نافذة تسجيل الدخول. تأكد أن النوافذ المنبثقة مسموحة للحظات وجرب ثانية.');
+        }
       } else {
         alert('خدمات Google لم تجهز بعد. أعد المحاولة خلال ثوانٍ.');
       }
     });
   }
 
-  // --- قائمة المستخدم (اختياري) ---
   function bindUserMenu() {
     if (userMenuBtn && userMenu) {
       userMenuBtn.addEventListener('click', () => userMenu.classList.toggle('hidden'));
@@ -173,13 +161,14 @@
 
     btnExport?.addEventListener('click', () => {
       try {
-        const read = (k, fb=[]) => (window.safeGetJson ? window.safeGetJson(k, fb) : JSON.parse(localStorage.getItem(k) || JSON.stringify(fb)));
+        const read = (k, fb=[]) =>
+          (window.safeGetJson ? window.safeGetJson(k, fb) : JSON.parse(localStorage.getItem(k) || JSON.stringify(fb)));
         const st = {
           wordsInProgress: read(STORE.IN_PROGRESS, []),
           learningBasket:  read(STORE.BASKET, []),
           lessonHistory:   read(STORE.HISTORY, [])
         };
-        const blob = new Blob([JSON.stringify(st, null, 2)], { type:'application/json' });
+        const blob = new Blob([JSON.stringify(st, null, 2)], { type: 'application/json' });
         const url  = URL.createObjectURL(blob);
         const a = document.createElement('a'); a.href = url; a.download = 'language_story_backup.json'; a.click();
         URL.revokeObjectURL(url);
@@ -217,7 +206,6 @@
     });
   }
 
-  // --- روابط data-nav للبطاقات ---
   function bindDataNav() {
     document.addEventListener('click', (e) => {
       const a = e.target.closest('a[data-nav]');
@@ -227,24 +215,26 @@
     });
   }
 
-  // --- تشغيل أولي ---
+  // ---------- تشغيل ----------
   async function init() {
     bindSignin();
     bindUserMenu();
     bindDataNav();
 
-    // ابدأ التهيئة فورًا
-    ensureGIS();
+    // نبدأ التحميل المسبق بهدوء
+    ensureGIS().then(() => enableSignin(!!tokenClient));
     ensureGapi();
 
-    // محاولات تمكين الزر أثناء التحميل
-    const i = setInterval(() => {
-      maybeEnableSignin();
-      if (gapiInited && gisInited && tokenClient) clearInterval(i);
-    }, 150);
-
-    // محاولة تحويل تلقائي بعد قليل إذا كان هناك توكن سابق
-    setTimeout(tryAutoRedirect, 400);
+    // إن كان هناك توكن سابق، نحول بهدوء بعد قليل
+    setTimeout(() => {
+      try {
+        const tok = window.gapi?.client?.getToken?.();
+        if (tok?.access_token) {
+          if (hasApiKey()) gotoPage(PAGES.LEVELS || 'levels.html');
+          else             gotoPage(PAGES.KEY    || 'key.html');
+        }
+      } catch {}
+    }, 500);
   }
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
