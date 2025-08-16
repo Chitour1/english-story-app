@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>قصتي اللغوية — اختيار المستويات</title>
+
+  <!-- Tailwind + الخطوط -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com"/>
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+  <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;700&family=Inter:wght@400;700&display=swap" rel="stylesheet"/>
+
+  <!-- CSS الموحّد -->
+  <link rel="stylesheet" href="./assets/css/styles.css"/>
+</head>
+<body class="bg-slate-50 text-slate-800 min-h-screen pb-20" style="font-family:'Cairo',sans-serif">
+
+  <div class="container mx-auto max-w-5xl p-4 md:p-8">
+    <!-- رأس الصفحة -->
+    <header class="mb-6 flex items-center justify-between gap-4">
+      <a data-nav="index.html" class="text-sky-700 hover:underline flex items-center gap-1 cursor-pointer">
+        ← الرجوع
+      </a>
+      <div class="text-center flex-1">
+        <h1 class="text-3xl font-bold text-sky-600">اختر مستواك</h1>
+        <p class="text-slate-600 mt-1">ابدأ رحلتك في تعلم الإنجليزية.</p>
+      </div>
+      <a data-nav="key.html" class="text-sky-700 hover:underline cursor-pointer">مفتاح Gemini</a>
+    </header>
+
+    <!-- إحصاءات (يتعامل معها main-levels.js إن وُجدت) -->
+    <section class="mb-6 p-4 bg-white rounded-lg shadow-md flex flex-wrap justify-around text-center">
+      <div><p class="text-slate-500">إجمالي كلمات A1</p><p id="total-words" class="text-2xl font-bold text-sky-600 font-english">0</p></div>
+      <div><p class="text-slate-500">كلمات تعلمتها</p><p id="learned-words" class="text-2xl font-bold text-green-600 font-english">0</p></div>
+      <div><p class="text-slate-500">المتبقي</p><p id="remaining-words" class="text-2xl font-bold text-amber-600 font-english">0</p></div>
+    </section>
+
+    <!-- بطاقات المستويات -->
+    <section class="text-center py-6">
+      <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8 max-w-4xl mx-auto">
+        <!-- بطاقة A1 (مفعّلة) -->
+        <div id="level-a1-btn" class="bg-white p-6 rounded-xl shadow-lg hover:shadow-2xl hover:-translate-y-2 transform transition-all duration-300 cursor-pointer">
+          <div class="text-5xl mb-4">🚀</div>
+          <h3 class="text-2xl font-bold text-slate-800">المستوى A1</h3>
+          <p class="text-slate-500 mt-2">للمبتدئين — جاهز الآن</p>
+        </div>
+
+        <!-- بطاقات مستقبلية (مقفلة) -->
+        <div class="level-card-disabled bg-slate-100 p-6 rounded-xl shadow-md text-slate-400">
+          <div class="text-5xl mb-4">⏳</div>
+          <h3 class="text-2xl font-bold">المستوى A2</h3>
+          <p class="mt-2">قريبًا</p>
+        </div>
+
+        <div class="level-card-disabled bg-slate-100 p-6 rounded-xl shadow-md text-slate-400">
+          <div class="text-5xl mb-4">⏳</div>
+          <h3 class="text-2xl font-bold">المستوى B1</h3>
+          <p class="mt-2">قريبًا</p>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <!-- جذور الواجهات المشتركة -->
+  <div id="global-modal-root"></div>
+  <div id="screen-loader" class="hidden fixed inset-0 z-50 bg-black/50 backdrop-blur-sm">
+    <div class="absolute inset-0 flex items-center justify-center p-4">
+      <div class="bg-white rounded-xl p-6 w-full max-w-xs text-center shadow-2xl">
+        <div class="mx-auto mb-3 w-10 h-10 rounded-full border-4 border-slate-200 border-t-sky-600 animate-spin"></div>
+        <div id="screen-loader-text" class="font-bold">جاري التحميل…</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- شريط قانوني -->
+  <footer id="legal-bar-root"></footer>
+
+  <!-- ترتيب التحميل مهم -->
+  <script src="./assets/js/config.js"></script>
+  <script src="./assets/js/ui.js"></script>
+  <script src="./assets/js/state.js"></script>
+  <script src="./assets/js/auth.js"></script>
+  <script src="./assets/js/common.js"></script>
+  <script src="./assets/js/main-levels.js"></script>
+</body>
+</html>
