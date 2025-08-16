@@ -14,9 +14,9 @@
   <!-- CSS الموحّد -->
   <link rel="stylesheet" href="./assets/css/styles.css"/>
 
-  <!-- GIS (يُستخدم داخل auth.js ولو لم تظهر الأزرار هنا) -->
-  <script src="https://apis.google.com/js/api.js" async defer></script>
-  <script src="https://accounts.google.com/gsi/client" async defer></script>
+  <!-- مهم: onload لاستدعاء دوال التهيئة داخل auth.js -->
+  <script src="https://apis.google.com/js/api.js" onload="gapiLoaded()" async defer></script>
+  <script src="https://accounts.google.com/gsi/client" onload="gisLoaded()" async defer></script>
 </head>
 <body class="bg-slate-50 text-slate-800 min-h-screen pb-20" style="font-family:'Cairo',sans-serif">
 
@@ -24,7 +24,7 @@
     <!-- ترويسة -->
     <header class="mb-8">
       <div class="flex items-center justify-between gap-4">
-        <a data-nav="index.html" class="text-sky-700 hover:underline flex items-center gap-1 cursor-pointer">
+        <a href="./index.html" class="text-sky-700 hover:underline flex items-center gap-1 cursor-pointer">
           ← الرجوع للتسجيل
         </a>
         <h1 class="text-2xl md:text-3xl font-bold text-sky-600">إدخال مفتاح Gemini</h1>
@@ -70,7 +70,7 @@
         <h3 class="font-bold mb-2">تلميحات</h3>
         <ul class="list-disc pr-5 space-y-1 text-slate-600">
           <li>يمكنك الضغط على زر <strong>إظهار</strong> لمعاينة المفتاح قبل الحفظ.</li>
-          <li>ادعم صلاحية المفتاح عبر إنشاءه من حسابك الشخصي، وحدِّثه عند انتهاءه.</li>
+          <li>اسمح بالنوافذ المنبثقة Popup عند تسجيل الدخول لأول مرة.</li>
         </ul>
       </div>
     </section>
