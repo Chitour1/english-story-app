@@ -1,111 +1,126 @@
 <!DOCTYPE html>
 <html lang="ar" dir="rtl">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>قصتي اللغوية — تسجيل الدخول</title>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>قصتي اللغوية - الصفحة الرئيسية</title>
 
-  <!-- Tailwind (CDN) + الخطوط -->
+  <!-- Tailwind -->
   <script src="https://cdn.tailwindcss.com"></script>
-  <link rel="preconnect" href="https://fonts.googleapis.com"/>
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
-  <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;700&family=Inter:wght@400;700&display=swap" rel="stylesheet"/>
 
-  <!-- CSS الموحّد -->
-  <link rel="stylesheet" href="./assets/css/styles.css"/>
+  <!-- Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700&display=swap" rel="stylesheet" />
 
-  <!-- Google Identity Services (يستخدمها auth.js) -->
-  <script src="https://apis.google.com/js/api.js" async defer></script>
-  <script src="https://accounts.google.com/gsi/client" async defer></script>
-  <script src="assets/js/main-login.js"></script>
-
-
-  <!-- للتحقق من جوجل (اختياري) -->
-  <meta name="google-site-verification" content="C4pbq9_S1_WiKVjmAr9dchhkdEO0fuQtzVK2RhEHFIE"/>
+  <style>
+    :root { color-scheme: light dark; }
+    body { font-family: "Cairo", system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans", "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol"; }
+    .card { background:#fff; border:1px solid #e2e8f0; border-radius:16px; box-shadow:0 10px 30px rgba(0,0,0,.04); }
+    .hover-card:hover { box-shadow:0 20px 40px rgba(2,132,199,.12); transform: translateY(-2px); }
+  </style>
 </head>
-<body class="bg-slate-50 text-slate-800 min-h-screen pb-20" style="font-family:'Cairo',sans-serif">
+<body class="bg-slate-50 text-slate-800 min-h-screen pb-24">
 
-  <!-- الحاوية -->
-  <div class="container mx-auto max-w-4xl p-4 md:p-8">
-    <header class="text-center mb-10 pt-8">
-      <h1 class="text-4xl font-bold text-sky-600 mb-2">قصتي اللغوية</h1>
-      <p class="text-lg text-slate-600">تعلم مفردات الإنجليزية عبر قصص يصنعها الذكاء الاصطناعي</p>
-    </header>
+  <header class="container mx-auto max-w-5xl px-4 pt-10 text-center">
+    <h1 class="text-4xl md:text-5xl font-extrabold text-sky-600 mb-2">قصتي اللغوية</h1>
+    <p class="text-slate-600 text-lg">تعلّم مفردات الإنجليزية عبر قصص يصنعها الذكاء الاصطناعي</p>
+  </header>
 
-    <!-- كرت تسجيل الدخول -->
-    <section class="bg-white rounded-xl shadow-md p-6 md:p-8">
-      <div class="flex items-center justify-center gap-3" id="auth-container">
-        <!-- زر تسجيل الدخول -->
-        <button id="signin-btn" class="bg-blue-600 text-white px-6 py-3 rounded-md hover:bg-blue-700 transition disabled:opacity-60">
-          تسجيل الدخول مع Google لحفظ التقدم
+  <main class="container mx-auto max-w-5xl px-4 mt-10 space-y-10">
+
+    <!-- بطاقة الحساب + تسجيل الدخول -->
+    <section class="card p-6 md:p-8">
+      <div class="flex flex-col items-center gap-5">
+        <!-- زر الدخول -->
+        <button id="signin-btn"
+                class="px-6 py-3 rounded-lg bg-sky-600 text-white font-bold hover:bg-sky-700 disabled:opacity-50 disabled:pointer-events-none">
+          تسجيل الدخول مع Google لحفظ التقدّم
         </button>
 
-        <!-- معلومات المستخدم (تظهر بعد الدخول) -->
+        <!-- معلومات المستخدم (مخفية مبدئياً) -->
         <div id="user-info" class="hidden relative">
-          <button id="user-menu-btn" class="flex items-center gap-2 px-3 py-2 bg-white border rounded-md hover:bg-slate-50">
-            <img id="user-avatar" class="w-8 h-8 rounded-full border" alt="User Avatar"/>
+          <button id="user-menu-btn" class="flex items-center gap-3 px-4 py-2 bg-white border rounded-lg hover:bg-slate-50">
+            <img id="user-avatar" class="w-10 h-10 rounded-full border" alt="User Avatar" />
             <span id="user-name" class="text-sm"></span>
           </button>
-          <div id="user-menu" class="hidden absolute left-0 mt-2 w-56 bg-white rounded-lg shadow-lg p-2 text-right z-10">
+          <div id="user-menu"
+               class="hidden absolute left-0 mt-2 w-60 bg-white rounded-xl shadow-xl p-2 text-right z-10 border">
             <button id="btn-export" class="w-full text-right px-3 py-2 hover:bg-slate-100 rounded">⬇️ تصدير البيانات</button>
             <label class="w-full block text-right px-3 py-2 hover:bg-slate-100 rounded cursor-pointer">
               ⬆️ استيراد البيانات
-              <input id="import-input" type="file" accept="application/json" class="hidden"/>
+              <input id="import-input" type="file" accept="application/json" class="hidden" />
             </label>
             <button id="reset-progress-btn-menu" class="w-full text-right px-3 py-2 text-red-600 hover:bg-red-50 rounded">↩️ إعادة الضبط</button>
             <button id="signout-btn" class="w-full text-right px-3 py-2 bg-red-500 text-white rounded-md hover:bg-red-600 mt-1">تسجيل الخروج</button>
           </div>
         </div>
-      </div>
 
-      <!-- ملاحظات -->
-      <div class="mt-8 text-center text-slate-600">
-        <p>بعد تسجيل الدخول سننقلك تلقائيًا إلى إدخال مفتاح Gemini أو إلى اختيار المستويات.</p>
+        <p class="text-slate-500 text-center">
+          بعد تسجيل الدخول سننقلك تلقائيًا إلى إدخال مفتاح <span class="font-bold">Gemini</span> أو إلى اختيار المستويات.
+        </p>
       </div>
     </section>
 
-    <!-- تلميحات -->
-    <section class="mt-8 grid md:grid-cols-3 gap-4">
-      <div class="bg-white p-4 rounded-lg shadow">
-        <div class="text-3xl">🔒</div>
-        <h3 class="font-bold mt-2">حفظ تقدّمك</h3>
-        <p class="text-sm text-slate-600">تقدمك يتم حفظه في Google Drive (appData).</p>
-      </div>
-      <div class="bg-white p-4 rounded-lg shadow">
-        <div class="text-3xl">🗝️</div>
-        <h3 class="font-bold mt-2">مفتاح Gemini</h3>
-        <p class="text-sm text-slate-600">ستُدخل المفتاح في الخطوة التالية لتوليد الدروس.</p>
-      </div>
-      <div class="bg-white p-4 rounded-lg shadow">
-        <div class="text-3xl">📚</div>
-        <h3 class="font-bold mt-2">مستويات متدرجة</h3>
-        <p class="text-sm text-slate-600">ابدأ بـ A1 — وسائل مساعدة وتمارين وصوتيات.</p>
+    <!-- روابط الصفحات الرئيسية -->
+    <section class="grid grid-cols-1 md:grid-cols-3 gap-6">
+      <!-- المستويات -->
+      <a href="#" data-nav="levels.html" class="card hover-card p-6 block">
+        <div class="text-4xl mb-3">🧭</div>
+        <h3 class="text-xl font-bold">مستويات متدرجة</h3>
+        <p class="text-slate-500 mt-1">ابدأ — A1 — وسائل مساعدة وتمارين وصوتيات.</p>
+      </a>
+
+      <!-- مفتاح Gemini -->
+      <a href="#" data-nav="key.html" class="card hover-card p-6 block">
+        <div class="text-4xl mb-3">🔑</div>
+        <h3 class="text-xl font-bold">مفتاح Gemini</h3>
+        <p class="text-slate-500 mt-1">سندخل المفتاح في الخطوة التالية لتوليد الدروس.</p>
+      </a>
+
+      <!-- معلومات الحفظ -->
+      <div class="card p-6">
+        <div class="text-4xl mb-3">🔒</div>
+        <h3 class="text-xl font-bold">حفظ تقدّمك</h3>
+        <p class="text-slate-500 mt-1">تقدّمك يُحفَظ في Google Drive (AppData) عند تسجيل الدخول.</p>
       </div>
     </section>
-  </div>
+  </main>
 
-  <!-- نافذة منبثقة مشتركة + اللودر العام من ui.js -->
-  <div id="global-modal-root"></div>
-  <div id="screen-loader" class="hidden fixed inset-0 z-50 bg-black/50 backdrop-blur-sm">
-    <div class="absolute inset-0 flex items-center justify-center p-4">
-      <div class="bg-white rounded-xl p-6 w-full max-w-xs text-center shadow-2xl">
-        <div class="mx-auto mb-3 w-10 h-10 rounded-full border-4 border-slate-200 border-t-sky-600 animate-spin"></div>
-        <div id="screen-loader-text" class="font-bold">جاري التحميل…</div>
+  <!-- تذييل -->
+  <footer class="fixed inset-x-0 bottom-0 z-40 bg-white/95 backdrop-blur border-t border-slate-200">
+    <div class="container mx-auto max-w-5xl px-4 py-3 flex flex-col sm:flex-row items-center justify-between gap-2 text-sm">
+      <div class="flex items-center gap-4">
+        <a href="https://chitour1.github.io/englishstory/terms.html" target="_blank" rel="noopener" class="text-sky-700 hover:underline">بنود الخدمة</a>
+        <a href="https://chitour1.github.io/englishstory/privacy.html" target="_blank" rel="noopener" class="text-sky-700 hover:underline">سياسة الخصوصية</a>
       </div>
+      <span class="text-slate-400">© 2025 قصتي اللغوية</span>
     </div>
-  </div>
+  </footer>
 
-  <!-- شريط قانوني ثابت (يُحدّث تلقائيًا عبر UI.ensureLegalBar من common.js) -->
-  <footer id="legal-bar-root"></footer>
+  <!-- =========================================================
+       ترتيب السكربتات إلزامي: config → Google APIs → main-login → health-check
+       ========================================================= -->
 
-  <!-- ترتيب تحميل السكربتات مهم -->
-  <script src="./assets/js/config.js"></script>
-  <script src="./assets/js/ui.js"></script>
-  <script src="./assets/js/state.js"></script>
-  <script src="./assets/js/auth.js"></script>
-  <script src="./assets/js/common.js"></script>
-  <script src="./assets/js/main-login.js"></script>
+  <!-- 1) إعدادات التطبيق -->
+  <script src="assets/js/config.js"></script>
+
+  <!-- 2) مكتبات Google مع onload (تعريف الدوال يتم داخل main-login.js) -->
+  <script src="https://apis.google.com/js/api.js" onload="gapiLoaded()" async defer></script>
+  <script src="https://accounts.google.com/gsi/client" onload="gisLoaded()" async defer></script>
+
+  <!-- 3) منطق صفحة تسجيل الدخول (يعتمد على APP_CONFIG ويعرّف gapiLoaded/gisLoaded إذا لزم) -->
+  <script src="assets/js/main-login.js"></script>
+
+  <!-- 4) فحص صحة الإعداد (اختياري أثناء الإعداد) -->
   <script src="assets/js/health-check.js"></script>
 
+  <noscript>
+    <div class="container mx-auto max-w-3xl px-4 py-6">
+      <div class="card p-4 text-center">
+        الرجاء تفعيل JavaScript لاستخدام التطبيق.
+      </div>
+    </div>
+  </noscript>
 </body>
 </html>
