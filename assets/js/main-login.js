@@ -1,13 +1,12 @@
 // assets/js/main-login.js
-// تسجيل الدخول يعمل حتى لو سكربتات Google لم تُحمَّل بعد.
-// يحقن السكربتات تلقائياً ويستخدم APP_CONFIG للتوجيه.
+// زر الدخول يعمل دائماً: يحقن سكربتات Google إن لزم ويطلب التوكن.
+// بعد الدخول: إذا وُجد مفتاح Gemini => levels.html، وإلا => key.html
 
 (function () {
   const CFG   = window.APP_CONFIG || {};
   const PAGES = CFG.PAGES || {};
   const STORE = CFG.STORAGE || {};
   const G     = CFG.GOOGLE  || {};
-
   const SCOPES = Array.isArray(G.SCOPES) ? G.SCOPES.join(' ') : (G.SCOPES || '');
 
   const gotoPage = (name) =>
@@ -32,23 +31,21 @@
   const importInput = $('#import-input');
   const signoutBtn  = $('#signout-btn');
 
-  // ---------- أدوات تحميل سكربت ----------
+  // -------- مساعد لتحميل سكربت خارجي بسرعة --------
   function loadScript(src, { timeout = 20000 } = {}) {
-    return new Promise((resolve, reject) => {
-      // إن كان محقونًا سابقًا
-      if ([...document.scripts].some(s => s.src === src)) {
-        resolve(); return;
-      }
+    return new Promise((resolve) => {
+      // إن كان موجودًا مسبقًا
+      if ([...document.scripts].some(s => s.src === src)) { resolve(); return; }
       const s = document.createElement('script');
       s.src = src; s.async = true; s.defer = true;
       s.onload = () => resolve();
-      s.onerror = () => reject(new Error('Failed to load ' + src));
+      s.onerror = () => resolve();     // لا نعلّق بسبب خطأ تحمبل — نكمل ونحاول ثانية
       document.head.appendChild(s);
-      setTimeout(() => resolve(), timeout); // لا نعلّق للأبد
+      setTimeout(resolve, timeout);     // لا ننتظر للأبد
     });
   }
 
-  // ---------- تهيئة gapi/gsi ----------
+  // -------- تهيئة gapi / GIS --------
   let gapiReady = false, gisReady = false, tokenClient = null;
 
   async function ensureGapi() {
@@ -83,23 +80,21 @@
         });
         gisReady = true;
         enableSignin(true);
-      } catch {
-        // يظل الزر مفعّل، لكن قد نحتاج إعادة المحاولة بعد قليل
-      }
+      } catch { /* سنحاول ثانية عند الضغط */ }
     }
   }
 
-  // نوفّر دوال onload لمن اختار استعمالها في <script>
+  // للدعم إذا كانت السكربتات محمّلة بـ onload في HTML
   window.gapiLoaded = () => { ensureGapi(); };
   window.gisLoaded  = () => { ensureGIS();  };
 
-  // ---------- بعد الحصول على التوكن ----------
+  // -------- بعد استلام التوكن --------
   async function onTokenReceived(resp) {
     if (resp?.error) return;
     try {
       window.gapi?.client?.setToken?.({ access_token: resp.access_token });
 
-      // جلب ملف المستخدم (اختياري)
+      // جلب اسم/صورة المستخدم (اختياري)
       try {
         const r = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
           headers: { Authorization: `Bearer ${resp.access_token}` }
@@ -117,38 +112,38 @@
       if (hasApiKey()) gotoPage(PAGES.LEVELS || 'levels.html');
       else             gotoPage(PAGES.KEY    || 'key.html');
 
-    } catch (e) {
-      console.error(e);
+    } catch {
       alert('حدث خطأ أثناء إتمام تسجيل الدخول.');
     }
   }
 
-  // ---------- ربط الواجهة ----------
-  function enableSignin(isReady) {
-    if (signinBtn) signinBtn.disabled = !isReady;
+  // -------- واجهة المستخدم --------
+  function enableSignin(ready) {
+    if (signinBtn) signinBtn.disabled = !ready;
   }
+
+  // الدالة العالمية الاحتياطية — تُستدعى أيضًا من onclick في الزر
+  window.__signinNow = async function () {
+    // نضمن جاهزية المكتبات حتى لو تأخرت
+    await Promise.all([ensureGIS(), ensureGapi()]);
+
+    // محاولة ثانية فورية لو لم يُنشأ tokenClient بعد
+    if (!tokenClient) await ensureGIS();
+
+    if (tokenClient) {
+      try {
+        tokenClient.requestAccessToken({ prompt: 'consent' });
+      } catch {
+        alert('تعذّر فتح نافذة تسجيل الدخول. اسمح بالنوافذ المنبثقة وجرب ثانية.');
+      }
+    } else {
+      alert('خدمات Google لم تجهز بعد. أعد المحاولة خلال ثوانٍ.');
+    }
+  };
 
   function bindSignin() {
     if (!signinBtn) return;
-    signinBtn.addEventListener('click', async () => {
-      // نضمن جاهزية المكتبات أولاً
-      await Promise.all([ensureGIS(), ensureGapi()]);
-
-      if (!tokenClient) {
-        // محاولة ثانية سريعة: قد يكون السكربت وصل للتو
-        await ensureGIS();
-      }
-
-      if (tokenClient) {
-        try {
-          tokenClient.requestAccessToken({ prompt: 'consent' });
-        } catch {
-          alert('لم نتمكن من فتح نافذة تسجيل الدخول. تأكد أن النوافذ المنبثقة مسموحة للحظات وجرب ثانية.');
-        }
-      } else {
-        alert('خدمات Google لم تجهز بعد. أعد المحاولة خلال ثوانٍ.');
-      }
-    });
+    signinBtn.addEventListener('click', () => window.__signinNow());
   }
 
   function bindUserMenu() {
@@ -165,8 +160,8 @@
           (window.safeGetJson ? window.safeGetJson(k, fb) : JSON.parse(localStorage.getItem(k) || JSON.stringify(fb)));
         const st = {
           wordsInProgress: read(STORE.IN_PROGRESS, []),
-          learningBasket:  read(STORE.BASKET, []),
-          lessonHistory:   read(STORE.HISTORY, [])
+          learningBasket:  read(STORE.BASKET,      []),
+          lessonHistory:   read(STORE.HISTORY,     [])
         };
         const blob = new Blob([JSON.stringify(st, null, 2)], { type: 'application/json' });
         const url  = URL.createObjectURL(blob);
@@ -215,17 +210,17 @@
     });
   }
 
-  // ---------- تشغيل ----------
+  // -------- تشغيل --------
   async function init() {
     bindSignin();
     bindUserMenu();
     bindDataNav();
 
-    // نبدأ التحميل المسبق بهدوء
+    // نبدأ التحميل المسبق
     ensureGIS().then(() => enableSignin(!!tokenClient));
     ensureGapi();
 
-    // إن كان هناك توكن سابق، نحول بهدوء بعد قليل
+    // إن كان هناك توكن سابق — نحول تلقائياً
     setTimeout(() => {
       try {
         const tok = window.gapi?.client?.getToken?.();
