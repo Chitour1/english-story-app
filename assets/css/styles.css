@@ -1,0 +1,124 @@
+/* =============== أساسيات عامة =============== */
+:root{
+  --sky:#0ea5e9;
+  --sky-700:#0369a1;
+  --slate-50:#f8fafc;
+  --slate-100:#f1f5f9;
+  --slate-200:#e2e8f0;
+  --slate-400:#94a3b8;
+  --slate-700:#334155;
+  --green-600:#16a34a;
+  --amber-500:#f59e0b;
+  --red-500:#ef4444;
+}
+
+html,body{height:100%}
+body{background:var(--slate-50);color:#0f172a;font-family:'Cairo',sans-serif}
+
+/* خط إنجليزي مساعد */
+.font-english{font-family:'Inter',sans-serif}
+
+/* روابط بيانات التوجيه */
+a[data-nav]{cursor:pointer}
+
+/* =============== جداول بسيطة موحّدة =============== */
+.table-style{width:100%;border-collapse:collapse}
+.table-style th,.table-style td{border:1px solid var(--slate-200);padding:12px;text-align:right}
+.table-style th{background:var(--slate-100);font-weight:700}
+.table-style td:first-child{font-weight:700;direction:ltr;font-family:'Inter',sans-serif}
+
+/* =============== حوار/قصة =============== */
+.lesson-content b{ /* New Words */
+  background:#fef08a;padding:2px 4px;border-radius:4px;font-weight:700;color:#713f12;cursor:pointer
+}
+.lesson-content i{ /* Repetition Words */
+  background:#dbeafe;padding:2px 4px;border-radius:4px;font-weight:700;color:#1e3a8a;cursor:pointer;font-style:normal
+}
+.lesson-content .word-span{cursor:pointer}
+.lesson-content .word-span:hover{background:#e0f2fe}
+.dialogue-line{margin-bottom:.5rem}
+.dialogue-speaker-1{color:#1d4ed8;font-weight:700}
+.dialogue-speaker-2{color:#be185d;font-weight:700}
+
+/* =============== بطاقات (Flashcards) =============== */
+.flashcard-container{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:1rem}
+.flashcard{background:#fff;border:1px solid var(--slate-200);border-radius:8px;height:100px;perspective:1000px;cursor:pointer}
+.flashcard-inner{position:relative;width:100%;height:100%;text-align:center;transition:transform .6s;transform-style:preserve-3d}
+.flashcard.is-flipped .flashcard-inner{transform:rotateY(180deg)}
+.flashcard-front,.flashcard-back{
+  position:absolute;inset:0;display:flex;align-items:center;justify-content:center;padding:1rem;font-size:1.05rem;
+  -webkit-backface-visibility:hidden;backface-visibility:hidden
+}
+.flashcard-back{transform:rotateY(180deg);background:#f0f9ff}
+
+/* =============== تمرين التوصيل =============== */
+.matching-container{display:flex;justify-content:space-around;gap:1rem}
+.matching-column{display:flex;flex-direction:column;gap:.5rem;flex:1}
+.match-item{padding:.75rem;border:2px solid var(--slate-200);border-radius:6px;cursor:pointer;transition:all .2s}
+.match-item.selected{border-color:#3b82f6;background:#dbeafe}
+.match-item.correct{border-color:#22c55e;background:#dcfce7;pointer-events:none}
+.match-item.incorrect{border-color:#ef4444;background:#fee2e2}
+
+/* =============== لودر الشاشة العامة =============== */
+#screen-loader{position:fixed;inset:0;background:rgba(0,0,0,.5);display:none;align-items:center;justify-content:center;z-index:2000}
+#screen-loader .box{background:#fff;padding:1.25rem 1.5rem;border-radius:12px;box-shadow:0 10px 30px rgba(0,0,0,.2);text-align:center;min-width:260px}
+.loader{border:5px solid #f3f3f3;border-top:5px solid #3498db;border-radius:50%;width:50px;height:50px;animation:spin 1s linear infinite}
+@keyframes spin{0%{transform:rotate(0)}100%{transform:rotate(360deg)}}
+
+/* =============== نافذة منبثقة عامة (ui.js يستخدمها) =============== */
+.modal-overlay{
+  position:fixed;inset:0;background:rgba(0,0,0,.5);display:flex;align-items:center;justify-content:center;z-index:1000
+}
+.modal-content{
+  background:#fff;padding:2rem;border-radius:12px;max-width:90%;width:450px;text-align:center;max-height:80vh;overflow:auto
+}
+
+/* =============== قائمة تحديد النص (popup) =============== */
+#selection-popup{
+  position:fixed; /* مهم لتمركز جيد على الموبايل */
+  max-width:92vw;overflow-x:hidden;z-index:9999
+}
+#selection-popup button{
+  background:none;border:none;cursor:pointer;font-size:14px;font-family:'Cairo',sans-serif;padding:.5rem;border-radius:.5rem
+}
+#selection-popup button:hover{background:#f1f5f9}
+
+/* =============== بطاقات المستويات المقفلة =============== */
+.level-card-disabled{filter:grayscale(1);cursor:not-allowed}
+
+/* =============== شريط قانوني ثابت =============== */
+#legal-bar-root .legal-bar{
+  position:fixed;left:0;right:0;bottom:0;z-index:40;background:rgba(255,255,255,.95);
+  -webkit-backdrop-filter:saturate(180%) blur(8px);backdrop-filter:saturate(180%) blur(8px);
+  border-top:1px solid var(--slate-200)
+}
+
+/* =============== عناصر صغيرة مساعدة =============== */
+.badge{display:inline-flex;align-items:center;gap:.4rem;padding:.25rem .5rem;border-radius:.5rem;border:1px solid var(--slate-200);background:#fff}
+.kbd{border:1px solid var(--slate-200);border-bottom-width:2px;border-radius:6px;padding:.15rem .35rem;background:#fff;font-family:ui-monospace, SFMono-Regular, Menlo, monospace}
+
+/* =============== تحسينات لمس/Mobile =============== */
+@media (hover:none){
+  .lesson-content .word-span:hover{background:transparent}
+}
+
+/* =============== عناصر الصوت (مشغّل القصة) =============== */
+#story-audio-player .play-btn{display:inline-flex;align-items:center;justify-content:center;width:44px;height:44px;border-radius:9999px;background:var(--sky);color:#fff}
+#story-audio-player .play-btn[disabled]{opacity:.5}
+
+/* =============== أزرار عامة ألوان مساعدة (اختيارية) =============== */
+.btn-sky{background:var(--sky);color:#fff}
+.btn-sky:hover{background:var(--sky-700)}
+.btn-green{background:var(--green-600);color:#fff}
+.btn-red{background:var(--red-500);color:#fff}
+.btn-amber{background:var(--amber-500);color:#fff}
+
+/* =============== حدود ألوان شائعة (تستخدمها main-a1) =============== */
+.border-sky-500{border-color:#0ea5e9 !important}
+.border-emerald-500{border-color:#10b981 !important}
+.bg-emerald-50{background:#ecfdf5 !important}
+.border-red-500{border-color:#ef4444 !important}
+.bg-red-50{background:#fef2f2 !important}
+
+/* =============== تصحيحات RTL/LTR خفيفة =============== */
+[dir="rtl"] .font-english{direction:ltr}
