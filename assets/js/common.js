@@ -1,161 +1,139 @@
 // assets/js/common.js
-// يعتمد على: window.APP_CONFIG, window.STATE, window.UI, window.AUTH (اختياري)
-// يوفّر الواجهة العامة: window.ROUTER + دوال مساعدة
+// يحاول إنشاء جلسة Google "صامتة" في كل صفحة (ما عدا index) قبل تطبيق الحماية.
+// يدعم GitHub Pages (APP_BASE) ويعتمد على GOOGLE.CLIENT_ID + SCOPES من config.js.
 
 (function () {
-  const CFG = window.APP_CONFIG;
-  const PAGES = CFG.PAGES;
+  const $ = (s, r=document) => r.querySelector(s);
 
-  // ========= أدوات عامة =========
-  const qs = (s, r = document) => r.querySelector(s);
-  const qsa = (s, r = document) => Array.from(r.querySelectorAll(s));
+  function CFG()    { return window.APP_CONFIG || {}; }
+  function PAGES()  { return (CFG().PAGES   || {}); }
+  function STORE()  { return (CFG().STORAGE || {}); }
+  function GOOGLE() { return (CFG().GOOGLE  || {}); }
 
-  function fileFromPathname() {
-    // يستخرج اسم الملف من المسار الحالي
-    const path = (location.pathname || "").replace(/\/+$/, "");
-    const last = path.split("/").filter(Boolean).pop() || "";
-    if (!last) return PAGES.INDEX;
-    if (!/\.(html?)$/i.test(last)) return PAGES.INDEX;
-    return last;
+  function buildUrl(page) {
+    try { return (window.buildUrl ? window.buildUrl(page) : `${(CFG().APP_BASE||'').replace(/\/+$/,'')}/${page}`); }
+    catch { return page; }
+  }
+  function goto(page) {
+    try { window.location.href = buildUrl(page); }
+    catch { window.location.href = page; }
   }
 
-  function is(pageName) {
-    return fileFromPathname().toLowerCase() === String(pageName).toLowerCase();
-  }
-
-  function go(pageName) {
-    // استعمال buildUrl من config.js لضمان المسار الصحيح على GitHub Pages
-    location.href = window.buildUrl(pageName);
-  }
-
-  function hardReplace(pageName) {
-    location.replace(window.buildUrl(pageName));
-  }
-
-  function ensureBaseOnLinks(root = document) {
-    // يضيف APP_BASE لرابط أي <a data-nav> تلقائياً
-    qsa('a[data-nav]', root).forEach(a => {
-      const to = a.getAttribute('data-nav');
-      if (!to) return;
-      a.href = window.buildUrl(to);
+  function loadScript(src) {
+    return new Promise((resolve) => {
+      if ([...document.scripts].some(s => s.src === src)) { resolve(); return; }
+      const s = document.createElement('script');
+      s.src = src; s.async = true; s.defer = true;
+      s.onload = () => resolve();
+      s.onerror = () => resolve();
+      document.head.appendChild(s);
+      setTimeout(resolve, 15000); // مهلة أمان
     });
   }
 
-  // ========= حراس التنقّل (Guards) =========
-  function requireAuth() {
-    // إذا AUTH غير مفعّل نُعتبر الحالة غير مسجّل الدخول (ملفات main-* تُظهر زر الدخول)
-    try { return !!(window.AUTH && window.AUTH.isLoggedIn && window.AUTH.isLoggedIn()); }
-    catch { return false; }
+  async function ensureConfig(maxWaitMs = 5000) {
+    if (GOOGLE().CLIENT_ID) return true;
+    // حمّل config.js مع cache-buster لتفادي كاش GitHub Pages
+    const cb = Math.floor(Date.now()/60000);
+    await loadScript(`assets/js/config.js?v=${cb}`);
+    const start = Date.now();
+    return await new Promise((res) => {
+      const t = setInterval(() => {
+        if (GOOGLE().CLIENT_ID) { clearInterval(t); res(true); }
+        else if (Date.now()-start > maxWaitMs) { clearInterval(t); res(false); }
+      }, 60);
+    });
   }
 
-  function requireApiKey() {
-    const key = window.STATE?.getApiKey?.() || "";
-    return !!key.trim();
+  async function ensureGIS() {
+    if (!window.google?.accounts?.oauth2) {
+      await loadScript('https://accounts.google.com/gsi/client');
+    }
+    return !!window.google?.accounts?.oauth2;
   }
 
-  function guardFor(page) {
-    // يحدد ما يلزم قبل دخول الصفحة
-    switch (page) {
-      case PAGES.INDEX:
-        return { needAuth: false, needKey: false };
-      case PAGES.KEY:
-        return { needAuth: true, needKey: false };
-      case PAGES.LEVELS:
-        return { needAuth: true, needKey: true };
-      case PAGES.A1:
-        return { needAuth: true, needKey: true };
-      default:
-        return { needAuth: false, needKey: false };
+  async function ensureGapi() {
+    if (!window.gapi?.load) {
+      await loadScript('https://apis.google.com/js/api.js');
+    }
+    if (window.gapi?.load) {
+      try {
+        await new Promise((res) => window.gapi.load('client', () =>
+          window.gapi.client.init({}).then(res).catch(res)
+        ));
+      } catch {}
     }
   }
 
-  function enforceGuards() {
-    const page = fileFromPathname();
-    const g = guardFor(page);
-
-    // تحقق الدخول
-    if (g.needAuth && !requireAuth()) {
-      // لم يُسجّل الدخول → أعده لصفحة الدخول
-      hardReplace(PAGES.INDEX);
-      return false;
-    }
-
-    // تحقق مفتاح Gemini
-    if (g.needKey && !requireApiKey()) {
-      hardReplace(PAGES.KEY);
-      return false;
-    }
-
-    return true;
+  function gapiHasToken() {
+    try { return !!window.gapi?.client?.getToken?.(); } catch { return false; }
   }
 
-  // ========= تحسينات GitHub Pages =========
-  function fixDirectAccess() {
-    // إذا فتح المستخدم رابطًا بدون اسم ملف (مثل .../english-story-app/)
-    // نضمن أنه يؤدي لـ index.html
-    const path = location.pathname;
-    const base = CFG.APP_BASE.replace(/\/+$/, "");
-    if (path === base || path === base + "/") {
-      // اتركه كما هو: GitHub Pages سيقدّم index.html
+  async function acquireTokenSilently() {
+    const G = GOOGLE();
+    const SCOPES = Array.isArray(G.SCOPES) ? G.SCOPES.join(' ') : (G.SCOPES || '');
+    const okGIS = await ensureGIS();
+    await ensureGapi();
+    if (!okGIS || !G.CLIENT_ID) return false;
+
+    return await new Promise((resolve) => {
+      try {
+        const tc = window.google.accounts.oauth2.initTokenClient({
+          client_id: G.CLIENT_ID,
+          scope: SCOPES,
+          callback: (resp) => {
+            if (resp?.access_token) {
+              try { window.gapi?.client?.setToken?.({ access_token: resp.access_token }); } catch {}
+              sessionStorage.setItem('__esa_google_ok', '1');
+              resolve(true);
+            } else {
+              resolve(false);
+            }
+          }
+        });
+        // طلب صامت بلا prompt — إن كانت هناك جلسة Google مفتوحة سيعطي توكن
+        tc.requestAccessToken({ prompt: '' });
+      } catch {
+        resolve(false);
+      }
+    });
+  }
+
+  async function isLoggedIn() {
+    if (!await ensureConfig()) return false;
+    if (gapiHasToken()) return true;
+    // جرّب تسجيل دخول صامت لمرة
+    const tried = sessionStorage.getItem('__esa_tried_silent') === '1';
+    if (!tried) {
+      sessionStorage.setItem('__esa_tried_silent','1');
+      const ok = await acquireTokenSilently();
+      if (ok) return true;
+    }
+    return gapiHasToken();
+  }
+
+  async function guard() {
+    const page = (location.pathname.split('/').pop() || 'index.html').toLowerCase();
+    const isIndex = (page === '' || page === 'index.html');
+
+    // لا حراسة على صفحة index
+    if (isIndex) return;
+
+    const ok = await isLoggedIn();
+    if (!ok) {
+      // إن لم ننجح في إنشاء الجلسة الصامتة، نعيدك لـ index لتسجّل دخولك يدويًا
+      goto(PAGES().INDEX || 'index.html');
       return;
     }
-    // لا شيء إضافي هنا؛ 404.html سيتكفّل بإرجاع المستخدم إلى الصفحة المطلوبة داخل المسار.
+    // logged in — تابع عادي
   }
 
-  // ========= شريط قانوني افتراضي (اختياري) =========
-  function ensureLegalBar() {
-    try {
-      window.UI?.ensureLegalBar?.({
-        termsUrl: "https://chitour1.github.io/englishstory/terms.html",
-        privacyUrl: "https://chitour1.github.io/englishstory/privacy.html",
-        year: new Date().getFullYear(),
-        brand: "© قصتي اللغوية"
-      });
-    } catch {}
-  }
-
-  // ========= نقاط الربط العامة =========
-  async function initCommon() {
-    // تفعيل ربط الروابط ذات data-nav
-    ensureBaseOnLinks();
-
-    // محاولة تهيئة AUTH إن وجد (لا يخطئ لو غير موجود)
-    try { await window.AUTH?.init?.(); } catch {}
-
-    // فحص الحراس الخاصة بالصفحة الحالية
-    enforceGuards();
-
-    // شريط قانوني موحّد (اختياري)
-    ensureLegalBar();
-
-    // مستمع عام لتغيّر الحالة (اختياري)
-    document.addEventListener("state:changed", () => {
-      // يمكن لصفحات main-* أن تعتمد عليه لتحديث الواجهة
-    });
-
-    // تحسينات GitHub Pages
-    fixDirectAccess();
-
-    // روابط تُبنى تلقائيًا عند الإنشاء الديناميكي
-    const mo = new MutationObserver(() => ensureBaseOnLinks());
-    mo.observe(document.body, { childList: true, subtree: true });
-  }
-
-  // واجهة عامة
-  window.ROUTER = {
-    is,
-    go,
-    hardReplace,
-    current: fileFromPathname,
-    enforceGuards,
-    guardFor,
-    ensureBaseOnLinks,
+  // واجهة بسيطة لو احتجتها من ملفات أخرى
+  window.Auth = {
+    isLoggedIn,
+    guard,
   };
 
-  // شغّل عند تحميل DOM
-  if (document.readyState === "loading") {
-    document.addEventListener("DOMContentLoaded", initCommon);
-  } else {
-    initCommon();
-  }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', guard);
+  else guard();
 })();
