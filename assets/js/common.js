@@ -1,47 +1,38 @@
 // assets/js/common.js
-// يحاول إنشاء جلسة Google "صامتة" في كل صفحة (ما عدا index) قبل تطبيق الحماية.
-// يدعم GitHub Pages (APP_BASE) ويعتمد على GOOGLE.CLIENT_ID + SCOPES من config.js.
+// محاولـة تسجيل دخول صامتة عبر Google GIS في الخلفية,
+// بدون أي إعادة توجيه قسرية. عند عدم تسجيل الدخول نعرض شريط تنبيه فقط.
 
 (function () {
   const $ = (s, r=document) => r.querySelector(s);
 
-  function CFG()    { return window.APP_CONFIG || {}; }
-  function PAGES()  { return (CFG().PAGES   || {}); }
-  function STORE()  { return (CFG().STORAGE || {}); }
-  function GOOGLE() { return (CFG().GOOGLE  || {}); }
+  const CFG    = window.APP_CONFIG || {};
+  const PAGES  = (CFG.PAGES   || {});
+  const GOOGLE = (CFG.GOOGLE  || {});
 
-  function buildUrl(page) {
-    try { return (window.buildUrl ? window.buildUrl(page) : `${(CFG().APP_BASE||'').replace(/\/+$/,'')}/${page}`); }
+  // صفحات لا تحتاج تسجيل دخول إطلاقًا
+  const NO_GUARD_PAGES = new Set([
+    (PAGES.INDEX   || 'index.html').toLowerCase(),
+    (PAGES.KEY     || 'key.html').toLowerCase(),
+    (PAGES.LEVELS  || 'levels.html').toLowerCase(),
+    (PAGES.A1      || 'level-a1.html').toLowerCase(),
+    (PAGES.NOT_FOUND || '404.html').toLowerCase(),
+  ]);
+
+  function buildUrl(page){
+    try { return window.buildUrl ? window.buildUrl(page) : page; }
     catch { return page; }
   }
-  function goto(page) {
-    try { window.location.href = buildUrl(page); }
-    catch { window.location.href = page; }
-  }
 
+  // تحميل سكريبت خارجي إن لم يكن محمّلًا
   function loadScript(src) {
     return new Promise((resolve) => {
       if ([...document.scripts].some(s => s.src === src)) { resolve(); return; }
       const s = document.createElement('script');
       s.src = src; s.async = true; s.defer = true;
-      s.onload = () => resolve();
-      s.onerror = () => resolve();
+      s.onload = resolve; s.onerror = resolve;
       document.head.appendChild(s);
-      setTimeout(resolve, 15000); // مهلة أمان
-    });
-  }
-
-  async function ensureConfig(maxWaitMs = 5000) {
-    if (GOOGLE().CLIENT_ID) return true;
-    // حمّل config.js مع cache-buster لتفادي كاش GitHub Pages
-    const cb = Math.floor(Date.now()/60000);
-    await loadScript(`assets/js/config.js?v=${cb}`);
-    const start = Date.now();
-    return await new Promise((res) => {
-      const t = setInterval(() => {
-        if (GOOGLE().CLIENT_ID) { clearInterval(t); res(true); }
-        else if (Date.now()-start > maxWaitMs) { clearInterval(t); res(false); }
-      }, 60);
+      // مهلة أمان
+      setTimeout(resolve, 12000);
     });
   }
 
@@ -69,18 +60,18 @@
     try { return !!window.gapi?.client?.getToken?.(); } catch { return false; }
   }
 
-  async function acquireTokenSilently() {
-    const G = GOOGLE();
-    const SCOPES = Array.isArray(G.SCOPES) ? G.SCOPES.join(' ') : (G.SCOPES || '');
+  async function trySilentLoginOnce() {
+    if (!GOOGLE.CLIENT_ID) return false;
     const okGIS = await ensureGIS();
     await ensureGapi();
-    if (!okGIS || !G.CLIENT_ID) return false;
+    if (!okGIS) return false;
 
     return await new Promise((resolve) => {
       try {
+        const scopes = Array.isArray(GOOGLE.SCOPES) ? GOOGLE.SCOPES.join(' ') : (GOOGLE.SCOPES || '');
         const tc = window.google.accounts.oauth2.initTokenClient({
-          client_id: G.CLIENT_ID,
-          scope: SCOPES,
+          client_id: GOOGLE.CLIENT_ID,
+          scope: scopes,
           callback: (resp) => {
             if (resp?.access_token) {
               try { window.gapi?.client?.setToken?.({ access_token: resp.access_token }); } catch {}
@@ -89,10 +80,9 @@
             } else {
               resolve(false);
             }
-          }
+          },
         });
-        // طلب صامت بلا prompt — إن كانت هناك جلسة Google مفتوحة سيعطي توكن
-        tc.requestAccessToken({ prompt: '' });
+        tc.requestAccessToken({ prompt: '' }); // صامت
       } catch {
         resolve(false);
       }
@@ -100,40 +90,61 @@
   }
 
   async function isLoggedIn() {
-    if (!await ensureConfig()) return false;
     if (gapiHasToken()) return true;
-    // جرّب تسجيل دخول صامت لمرة
+
     const tried = sessionStorage.getItem('__esa_tried_silent') === '1';
     if (!tried) {
-      sessionStorage.setItem('__esa_tried_silent','1');
-      const ok = await acquireTokenSilently();
+      sessionStorage.setItem('__esa_tried_silent', '1');
+      const ok = await trySilentLoginOnce();
       if (ok) return true;
     }
     return gapiHasToken();
   }
 
-  async function guard() {
-    const page = (location.pathname.split('/').pop() || 'index.html').toLowerCase();
-    const isIndex = (page === '' || page === 'index.html');
+  function showAuthBanner() {
+    if (document.getElementById('esa-auth-banner')) return;
 
-    // لا حراسة على صفحة index
-    if (isIndex) return;
-
-    const ok = await isLoggedIn();
-    if (!ok) {
-      // إن لم ننجح في إنشاء الجلسة الصامتة، نعيدك لـ index لتسجّل دخولك يدويًا
-      goto(PAGES().INDEX || 'index.html');
-      return;
-    }
-    // logged in — تابع عادي
+    const bar = document.createElement('div');
+    bar.id = 'esa-auth-banner';
+    bar.dir = 'rtl';
+    bar.className =
+      'fixed top-0 inset-x-0 z-50 bg-amber-50 text-amber-900 border-b border-amber-200';
+    bar.innerHTML = `
+      <div class="container mx-auto max-w-4xl px-4 py-2 flex items-center justify-between gap-3">
+        <div class="text-sm">
+          لست مُسجّلًا في Google حاليًا — <b>تقدّمك لن يُحفَظ على Google Drive</b>.
+        </div>
+        <div class="flex items-center gap-2">
+          <a href="${buildUrl(PAGES.INDEX || 'index.html')}"
+             class="px-3 py-1.5 rounded-md bg-amber-600 text-white hover:bg-amber-700 text-sm">
+             تسجيل الدخول لحفظ التقدّم
+          </a>
+          <button type="button" id="esa-auth-banner-close"
+            class="px-2 py-1 text-sm border rounded-md hover:bg-amber-100">إخفاء</button>
+        </div>
+      </div>`;
+    document.body.appendChild(bar);
+    $('#esa-auth-banner-close')?.addEventListener('click', () => bar.remove());
   }
 
-  // واجهة بسيطة لو احتجتها من ملفات أخرى
-  window.Auth = {
-    isLoggedIn,
-    guard,
-  };
+  async function guard() {
+    // اسم الصفحة الحالي
+    const page = (location.pathname.split('/').pop() || 'index.html').toLowerCase();
+
+    // لا نعيد التوجيه على الإطلاق — حتى الصفحات المحمية مسموح بها،
+    // فقط نُظهر شريط تنبيه إن لم يكن هناك تسجيل.
+    // (هذا يمنع الارتداد الذي شاهدته).
+    // نحاول تسجيلًا صامتًا في الخلفية:
+    isLoggedIn().then((ok) => {
+      if (!ok) showAuthBanner();
+    });
+
+    // لا شيء آخر — اترك الصفحة تعمل.
+  }
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', guard);
   else guard();
+
+  // واجهة بسيطة إن احتجتها:
+  window.Auth = { isLoggedIn };
 })();
