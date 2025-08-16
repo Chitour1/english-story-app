@@ -1,81 +1,70 @@
 // assets/js/main-key.js
-// يعتمد على: STATE, UI, ROUTER, APP_CONFIG
+// يحفظ مفتاح Gemini محليًا ويوجّه لصفحة المستويات بدون أي تحقق خارجي يمنع الحفظ.
+
 (function () {
-  const qs  = (s, r = document) => r.querySelector(s);
+  const CFG   = window.APP_CONFIG || {};
+  const STORE = (CFG.STORAGE || {});
+  const PAGES = (CFG.PAGES   || {});
 
-  const els = {
-    input: null,   // #api-key-input
-    save:  null,   // #save-api-key-btn
-    show:  null,   // #toggle-key-visibility (اختياري إن وُجد)
-  };
+  const $ = (s, r=document) => r.querySelector(s);
+  const input = $('#api-key-input');
+  const saveBtn = $('#save-api-key-btn');
 
-  function linkDom() {
-    els.input = qs('#api-key-input');
-    els.save  = qs('#save-api-key-btn');
-    els.show  = qs('#toggle-key-visibility'); // زر إظهار/إخفاء (اختياري)
-  }
-
-  function prefillIfAny() {
+  function goto(page) {
     try {
-      const key = (STATE.getApiKey?.() || '').trim();
-      if (els.input && key) els.input.value = key;
-    } catch {}
+      if (window.goto) return window.goto(page);
+      const url = window.buildUrl ? window.buildUrl(page) : page;
+      window.location.href = url;
+    } catch { window.location.href = page; }
   }
 
-  function validateKey(v) {
-    // تحقق بسيط: غير فارغ، طول معقول
-    return typeof v === 'string' && v.trim().length >= 12;
+  function readKey() {
+    try { return window.safeGet ? window.safeGet(STORE.API_KEY) : localStorage.getItem(STORE.API_KEY); }
+    catch { return null; }
+  }
+
+  function writeKey(k) {
+    // نحاول localStorage أولاً، وإن فشل نستخدم sessionStorage كخطة بديلة
+    try {
+      if (window.safeSet) window.safeSet(STORE.API_KEY, k);
+      else localStorage.setItem(STORE.API_KEY, k);
+      return true;
+    } catch {
+      try { sessionStorage.setItem(STORE.API_KEY, k); return true; }
+      catch { return false; }
+    }
   }
 
   async function onSave() {
-    const val = (els.input?.value || '').trim();
-    if (!validateKey(val)) {
-      UI.showToast('الرجاء إدخال مفتاح API صالح.', { type: 'warning' });
-      els.input?.focus();
+    const key = (input?.value || '').trim();
+    if (!key) {
+      alert('رجاءً أدخل مفتاح Gemini أولًا.');
+      input?.focus();
       return;
     }
-    try {
-      UI.showLoader('جاري حفظ المفتاح…');
-      STATE.setApiKey(val);
-      UI.hideLoader();
-      UI.showToast('تم حفظ مفتاح Gemini.', { type: 'success' });
-      // إلى صفحة اختيار المستويات
-      ROUTER.go(APP_CONFIG.PAGES.LEVELS);
-    } catch (e) {
-      console.error(e);
-      UI.hideLoader();
-      UI.showToast('تعذر حفظ المفتاح.', { type: 'error' });
+
+    saveBtn && (saveBtn.disabled = true);
+
+    const ok = writeKey(key);
+    if (!ok) {
+      alert('تعذّر حفظ المفتاح في المتصفح. عطّل التصفّح الخاص أو جرّب متصفحًا آخر.');
+      saveBtn && (saveBtn.disabled = false);
+      return;
     }
-  }
 
-  function bindEvents() {
-    els.save?.addEventListener('click', onSave);
-    els.input?.addEventListener('keypress', (e) => {
-      if (e.key === 'Enter') onSave();
-    });
-
-    // زر إظهار/إخفاء المفتاح إن وُجد
-    els.show?.addEventListener('click', () => {
-      if (!els.input) return;
-      const isPwd = els.input.type === 'password';
-      els.input.type = isPwd ? 'text' : 'password';
-      els.show.textContent = isPwd ? 'إخفاء' : 'إظهار';
-      els.input.focus();
-    });
-
-    // لصق تلقائي: عند لصق سلسلة طويلة نعتبرها مفتاحًا ونفعل الحفظ
-    els.input?.addEventListener('paste', (e) => {
-      setTimeout(() => {
-        const v = (els.input.value || '').trim();
-        if (validateKey(v)) UI.showToast('تم لصق مفتاح يبدو صالحًا.', { type: 'info' });
-      }, 0);
-    });
+    alert('تم حفظ مفتاح Gemini بنجاح ✅');
+    goto(PAGES.LEVELS || 'levels.html');
   }
 
   function init() {
-    linkDom();
-    prefillIfAny();
-    bindEvents();
+    const existing = readKey();
+    if (existing && input) input.value = existing;
+
+    if (saveBtn) {
+      saveBtn.disabled = false;
+      saveBtn.addEventListener('click', onSave);
+    }
+    input?.addEventListener('keypress', (e) => { if (e.key === 'Enter') onSave(); });
   }
 
   if (document.readyState === 'loading') {
