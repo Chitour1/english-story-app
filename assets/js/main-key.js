@@ -1,54 +1,73 @@
 // assets/js/main-key.js
-// يحفظ مفتاح Gemini محليًا ويوجّه لصفحة المستويات بدون أي تحقق خارجي يمنع الحفظ.
+// يحفظ مفتاح Gemini محليًا (localStorage ثم sessionStorage كخطة بديلة)
+// ويتحقق من نجاح الحفظ قبل التوجيه إلى صفحة المستويات.
 
 (function () {
-  const CFG   = window.APP_CONFIG || {};
-  const STORE = (CFG.STORAGE || {});
-  const PAGES = (CFG.PAGES   || {});
-
   const $ = (s, r=document) => r.querySelector(s);
-  const input = $('#api-key-input');
-  const saveBtn = $('#save-api-key-btn');
 
-  function goto(page) {
-    try {
-      if (window.goto) return window.goto(page);
-      const url = window.buildUrl ? window.buildUrl(page) : page;
-      window.location.href = url;
-    } catch { window.location.href = page; }
+  const CFG    = window.APP_CONFIG || {};
+  const PAGES  = (CFG.PAGES   || {});
+  const STORE  = (CFG.STORAGE || {});
+
+  // اسم المفتاح مع افتراضي آمن إذا لم يصل من config.js
+  const STORE_KEY = STORE.API_KEY || 'english_story_app__geminiApiKey';
+
+  const input   = $('#api-key-input');
+  const saveBtn = $('#save-api-key-btn');
+  const toggle  = $('#toggle-key-visibility');
+
+  function buildUrl(page){
+    try { return window.buildUrl ? window.buildUrl(page) : page; }
+    catch { return page; }
+  }
+  function goto(page){
+    const p = page || PAGES.LEVELS || 'levels.html';
+    window.location.href = buildUrl(p);
   }
 
   function readKey() {
-    try { return window.safeGet ? window.safeGet(STORE.API_KEY) : localStorage.getItem(STORE.API_KEY); }
-    catch { return null; }
+    try {
+      if (window.safeGet) return window.safeGet(STORE_KEY);
+      return localStorage.getItem(STORE_KEY) ?? sessionStorage.getItem(STORE_KEY);
+    } catch { return null; }
   }
 
-  function writeKey(k) {
-    // نحاول localStorage أولاً، وإن فشل نستخدم sessionStorage كخطة بديلة
+  function tryWrite(key) {
+    // 1) localStorage
     try {
-      if (window.safeSet) window.safeSet(STORE.API_KEY, k);
-      else localStorage.setItem(STORE.API_KEY, k);
+      if (window.safeSet) window.safeSet(STORE_KEY, key);
+      else localStorage.setItem(STORE_KEY, key);
       return true;
-    } catch {
-      try { sessionStorage.setItem(STORE.API_KEY, k); return true; }
-      catch { return false; }
-    }
+    } catch {/* ignore */}
+    // 2) sessionStorage
+    try {
+      sessionStorage.setItem(STORE_KEY, key);
+      return true;
+    } catch {/* ignore */}
+    return false;
+  }
+
+  function verifyWrite(expected) {
+    try {
+      const a = localStorage.getItem(STORE_KEY);
+      const b = sessionStorage.getItem(STORE_KEY);
+      return (a === expected) || (b === expected);
+    } catch { return false; }
   }
 
   async function onSave() {
     const key = (input?.value || '').trim();
-    if (!key) {
-      alert('رجاءً أدخل مفتاح Gemini أولًا.');
-      input?.focus();
-      return;
-    }
+    if (!key) { alert('رجاءً أدخل مفتاح Gemini أولًا.'); input?.focus(); return; }
 
-    saveBtn && (saveBtn.disabled = true);
+    if (saveBtn) saveBtn.disabled = true;
 
-    const ok = writeKey(key);
+    const ok = tryWrite(key) && verifyWrite(key);
     if (!ok) {
-      alert('تعذّر حفظ المفتاح في المتصفح. عطّل التصفّح الخاص أو جرّب متصفحًا آخر.');
-      saveBtn && (saveBtn.disabled = false);
+      if (saveBtn) saveBtn.disabled = false;
+      alert(
+        'تعذّر حفظ المفتاح في المتصفح.\n' +
+        'جرّب إلغاء وضع التصفّح الخاص (InPrivate) أو السماح للتخزين المحلي، ثم أعد المحاولة.'
+      );
       return;
     }
 
@@ -57,19 +76,27 @@
   }
 
   function init() {
+    // عبّئ الحقل إن كان محفوظًا
     const existing = readKey();
     if (existing && input) input.value = existing;
 
+    // زر الحفظ
     if (saveBtn) {
       saveBtn.disabled = false;
       saveBtn.addEventListener('click', onSave);
     }
+    // Enter يحفظ
     input?.addEventListener('keypress', (e) => { if (e.key === 'Enter') onSave(); });
+
+    // إظهار/إخفاء
+    toggle?.addEventListener('click', () => {
+      if (!input) return;
+      const isPwd = input.type === 'password';
+      input.type = isPwd ? 'text' : 'password';
+      toggle.textContent = isPwd ? 'إخفاء' : 'إظهار';
+    });
   }
 
-  if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', init);
-  } else {
-    init();
-  }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
+  else init();
 })();
