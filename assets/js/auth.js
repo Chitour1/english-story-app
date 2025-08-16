@@ -1,268 +1,268 @@
 // assets/js/auth.js
-// يعتمد على window.APP_CONFIG من config.js
-// يوفّر الواجهة العامة: window.AUTH
+// إدارة تسجيل الدخول + مزامنة Google Drive (appData) + تحميل/حفظ التقدّم.
+// يعمل على كل الصفحات بدون إعادة توجيه قسرية.
 
 (function () {
-  const CFG = window.APP_CONFIG;
-  const STORAGE = CFG.STORAGE;
+  const CFG   = window.APP_CONFIG || {};
+  const GCFG  = CFG.GOOGLE || {};
+  const STORE = CFG.STORAGE || {};
+  const PAGES = CFG.PAGES || {};
 
-  // ------- حالة داخلية -------
+  const FILE_NAME = "language_story_data.json";
+
+  let gapiReady = false;
+  let gisReady  = false;
   let tokenClient = null;
-  let gapiInited = false;
-  let gisInited = false;
-  let isLoggedIn = false;
-  let userProfile = null;
-  let driveFileId = window.safeGet(STORAGE.DRIVE_FILE_ID, null);
+  let _profile = null;
 
-  // اسم الملف داخل appDataFolder
-  const DRIVE_FILENAME = "language_story_data.json";
+  const sleep = (ms)=> new Promise(r=>setTimeout(r,ms));
+  const $ = (s, r=document)=> r.querySelector(s);
+  const build = (p)=> window.buildUrl ? buildUrl(p) : p;
 
-  // ------- Helpers -------
-  function wait(ms) { return new Promise((r) => setTimeout(r, ms)); }
-
-  function getAccessToken() {
-    const t = gapi.client.getToken();
-    return t?.access_token || null;
+  // ---------- كشف حالة الدخول ----------
+  function hasToken() {
+    try { return !!(window.gapi?.client?.getToken?.()); } catch { return false; }
+  }
+  function markSignedIn(ok) {
+    const v = ok ? "1" : "0";
+    try { sessionStorage.setItem("__esa_google_ok", v); } catch {}
+    try { localStorage.setItem("__esa_google_ok", v); } catch {}
+  }
+  function isProbablySignedIn() {
+    if (hasToken()) return true;
+    if (sessionStorage.getItem("__esa_google_ok")==="1") return true;
+    if (localStorage.getItem("__esa_google_ok")==="1") return true;
+    if (localStorage.getItem(STORE.DRIVE_FILE_ID)) return true;
+    return false;
   }
 
-  function headersWithAuth() {
-    const token = getAccessToken();
-    return {
-      Authorization: `Bearer ${token}`,
-      "Content-Type": "application/json",
-    };
+  // ---------- تحميل مكتبات Google ----------
+  function injectOnce(src, {id, onload}={}) {
+    if (id && document.getElementById(id)) return;
+    const s = document.createElement("script");
+    if (id) s.id = id;
+    s.src = src; s.async = true; s.defer = true;
+    if (onload) s.onload = onload;
+    document.head.appendChild(s);
   }
 
-  function emit(eventName, detail = {}) {
-    document.dispatchEvent(new CustomEvent(eventName, { detail }));
-  }
-
-  // ------- تحميل سكربتات Google (gapi + gis) -------
-  async function loadGoogleScripts() {
-    // حقن السكربتات إذا لم تكن موجودة
-    if (!document.querySelector('script[data-auth="gapi"]')) {
-      const s1 = document.createElement("script");
-      s1.src = "https://apis.google.com/js/api.js";
-      s1.async = true;
-      s1.defer = true;
-      s1.dataset.auth = "gapi";
-      document.head.appendChild(s1);
-    }
-    if (!document.querySelector('script[data-auth="gis"]')) {
-      const s2 = document.createElement("script");
-      s2.src = "https://accounts.google.com/gsi/client";
-      s2.async = true;
-      s2.defer = true;
-      s2.dataset.auth = "gis";
-      document.head.appendChild(s2);
-    }
-
-    // انتظر توافر window.gapi و window.google
-    let tries = 0;
-    while (!(window.gapi && window.google) && tries < 200) {
-      await wait(50);
-      tries++;
-    }
-    if (!(window.gapi && window.google)) {
-      throw new Error("تعذر تحميل مكتبات Google");
-    }
-  }
-
-  // ------- تهيئة gapi و GIS -------
   async function initGapi() {
-    if (gapiInited) return;
-    await new Promise((resolve) => {
-      gapi.load("client", resolve);
+    if (gapiReady) return;
+    await new Promise(res=>{
+      if (window.gapi?.load) { res(); return; }
+      injectOnce("https://apis.google.com/js/api.js", { id:"gapi-js" });
+      const t = setInterval(()=>{ if (window.gapi?.load) { clearInterval(t); res(); } }, 30);
     });
-    await gapi.client.init({});
-    gapiInited = true;
+    await new Promise(res=> window.gapi.load('client', res));
+    await window.gapi.client.init({});
+    gapiReady = true;
   }
 
   async function initGis() {
-    if (gisInited) return;
-    tokenClient = google.accounts.oauth2.initTokenClient({
-      client_id: CFG.GOOGLE.CLIENT_ID,
-      scope: CFG.GOOGLE.SCOPES.join(" "),
-      callback: async (resp) => {
-        if (resp.error) {
-          emit("auth:error", { error: resp.error });
-          return;
-        }
-        gapi.client.setToken({ access_token: resp.access_token });
-        isLoggedIn = true;
-        try {
-          await ensureDriveLoaded();
-          await fetchUserProfile();
-          emit("auth:signin", { profile: userProfile });
-        } catch (e) {
-          emit("auth:error", { error: e });
-        }
-      },
+    if (gisReady) return;
+    await new Promise(res=>{
+      if (window.google?.accounts?.oauth2) { res(); return; }
+      injectOnce("https://accounts.google.com/gsi/client", { id:"gis-js" });
+      const t = setInterval(()=>{ if (window.google?.accounts?.oauth2) { clearInterval(t); res(); } }, 30);
     });
-    gisInited = true;
+    tokenClient = window.google.accounts.oauth2.initTokenClient({
+      client_id: (GCFG.CLIENT_ID||"").trim(),
+      scope: (GCFG.SCOPES||[]).join(" "),
+      callback: async (resp)=>{
+        if (resp?.access_token) {
+          window.gapi.client.setToken({ access_token: resp.access_token });
+          markSignedIn(true);
+          document.dispatchEvent(new CustomEvent("esa:google-signed-in"));
+        }
+      }
+    });
+    gisReady = true;
   }
 
-  async function ensureDriveLoaded() {
-    // تحميل ديسكفري درايف
-    await gapi.client.load(
-      "https://www.googleapis.com/discovery/v1/apis/drive/v3/rest"
-    );
-  }
-
-  // ------- تسجيل الدخول/الخروج -------
-  async function signIn() {
-    await loadGoogleScripts();
+  async function ready() {
     await initGapi();
     await initGis();
-    tokenClient.requestAccessToken({ prompt: "consent" });
-  }
-
-  async function signOut() {
-    const token = gapi.client.getToken();
-    if (token) {
-      try {
-        await google.accounts.oauth2.revoke(token.access_token);
-      } catch (_) {}
-      gapi.client.setToken("");
-    }
-    isLoggedIn = false;
-    userProfile = null;
-    driveFileId = null;
-    window.safeSet(STORAGE.DRIVE_FILE_ID, "");
-    emit("auth:signout");
-  }
-
-  async function tokenRefresh() {
-    // طلب توكن صامت إذا أمكن
-    tokenClient?.requestAccessToken({ prompt: "" });
-  }
-
-  // ------- الملف على Drive -------
-  async function findOrCreateDriveFileId() {
-    if (driveFileId) return driveFileId;
-
-    // ابحث عن الملف
-    const list = await gapi.client.drive.files.list({
-      spaces: "appDataFolder",
-      q: `name='${DRIVE_FILENAME}' and trashed=false`,
-      fields: "files(id,name)",
-    });
-
-    if (list?.result?.files?.length) {
-      driveFileId = list.result.files[0].id;
-      window.safeSet(STORAGE.DRIVE_FILE_ID, driveFileId);
-      return driveFileId;
-    }
-
-    // إن لم يوجد، أنشئه فارغًا
-    const boundary = "-------314159265358979323846";
-    const delimiter = `\r\n--${boundary}\r\n`;
-    const closeDelim = `\r\n--${boundary}--`;
-    const metadata = {
-      name: DRIVE_FILENAME,
-      mimeType: "application/json",
-      parents: ["appDataFolder"],
-    };
-    const data = JSON.stringify({ wordsInProgress: [], masteredWords: [], learningBasket: [], lessonHistory: [] });
-
-    const body =
-      delimiter +
-      "Content-Type: application/json; charset=UTF-8\r\n\r\n" +
-      JSON.stringify(metadata) +
-      delimiter +
-      "Content-Type: application/json\r\n\r\n" +
-      data +
-      closeDelim;
-
-    const token = getAccessToken();
-    const res = await fetch(
-      "https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart",
-      { method: "POST", headers: { Authorization: `Bearer ${token}`, "Content-Type": `multipart/related; boundary=${boundary}` }, body }
-    );
-    if (!res.ok) throw new Error("فشل إنشاء ملف المزامنة على Drive");
-    const created = await res.json();
-    driveFileId = created.id;
-    window.safeSet(STORAGE.DRIVE_FILE_ID, driveFileId);
-    return driveFileId;
-  }
-
-  async function loadStateFromDrive() {
-    if (!isLoggedIn) throw new Error("غير مسجّل الدخول");
-    await ensureDriveLoaded();
-    const id = await findOrCreateDriveFileId();
-    const file = await gapi.client.drive.files.get({ fileId: id, alt: "media" });
-    const raw = file.result ?? file.body ?? "{}";
-    const data = typeof raw === "string" ? JSON.parse(raw) : raw;
-    emit("drive:load", { data });
-    return data;
-  }
-
-  async function saveStateToDrive(stateObj) {
-    if (!isLoggedIn) throw new Error("غير مسجّل الدخول");
-    await ensureDriveLoaded();
-    const id = await findOrCreateDriveFileId();
-
-    const boundary = "-------314159265358979323846";
-    const delimiter = `\r\n--${boundary}\r\n`;
-    const closeDelim = `\r\n--${boundary}--`;
-
-    const metaForUpdate = {}; // لا نحتاج لتغيير الاسم
-    const dataPart = JSON.stringify(stateObj || {});
-
-    const body =
-      delimiter +
-      "Content-Type: application/json; charset=UTF-8\r\n\r\n" +
-      JSON.stringify(metaForUpdate) +
-      delimiter +
-      "Content-Type: application/json\r\n\r\n" +
-      dataPart +
-      closeDelim;
-
-    const token = getAccessToken();
-    const res = await fetch(
-      `https://www.googleapis.com/upload/drive/v3/files/${id}?uploadType=multipart`,
-      { method: "PATCH", headers: { Authorization: `Bearer ${token}`, "Content-Type": `multipart/related; boundary=${boundary}` }, body }
-    );
-    if (!res.ok) throw new Error("فشل الحفظ على Drive");
-    emit("drive:save");
     return true;
   }
 
-  // ------- ملف شخصي -------
-  async function fetchUserProfile() {
-    const token = getAccessToken();
-    if (!token) return null;
-    const res = await fetch("https://www.googleapis.com/oauth2/v3/userinfo", {
-      headers: { Authorization: `Bearer ${token}` },
-    });
-    if (!res.ok) return null;
-    userProfile = await res.json();
-    emit("auth:profile", { profile: userProfile });
-    return userProfile;
+  // ---------- صامت/تفاعلي ----------
+  async function silent() {
+    await ready();
+    if (hasToken()) return true;
+    try {
+      tokenClient.requestAccessToken({ prompt: "" }); // silent
+      // انتظر لحظات لمعالجة الكالباك
+      for (let i=0;i<20;i++){ if (hasToken()) break; await sleep(50); }
+      return hasToken();
+    } catch { return false; }
   }
 
-  // ------- تهيئة عامة -------
-  async function init() {
+  async function signInInteractive() {
+    await ready();
+    return new Promise((resolve)=>{
+      tokenClient.callback = async (resp)=>{
+        const ok = !!resp?.access_token;
+        if (ok) {
+          window.gapi.client.setToken({ access_token: resp.access_token });
+          markSignedIn(true);
+          await fetchProfile();
+        }
+        resolve(ok);
+      };
+      tokenClient.requestAccessToken({ prompt: "consent" });
+    });
+  }
+
+  async function signOut() {
     try {
-      await loadGoogleScripts();
-      await initGapi();
-      await initGis();
-      emit("auth:ready");
+      const tok = window.gapi?.client?.getToken?.();
+      if (tok?.access_token) {
+        await window.google.accounts.oauth2.revoke(tok.access_token, ()=>{});
+      }
+    } catch {}
+    try { window.gapi?.client?.setToken?.(''); } catch {}
+    markSignedIn(false);
+    _profile = null;
+    document.dispatchEvent(new CustomEvent("esa:google-signed-out"));
+  }
+
+  // ---------- بروفايل ----------
+  async function fetchProfile() {
+    if (!hasToken()) return null;
+    try {
+      const res = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
+        headers: { Authorization: `Bearer ${window.gapi.client.getToken().access_token}` }
+      });
+      if (res.ok) { _profile = await res.json(); return _profile; }
+    } catch {}
+    return null;
+  }
+  function getProfile(){ return _profile; }
+
+  // ---------- Drive (appDataFolder) ----------
+  async function ensureDriveApi() {
+    await ready();
+    await window.gapi.client.load('https://www.googleapis.com/discovery/v1/apis/drive/v3/rest');
+  }
+
+  function readLocalState() {
+    return {
+      wordsInProgress: window.safeGetJson(STORE.IN_PROGRESS, []) || [],
+      masteredWords : window.safeGetJson(STORE.HISTORY, [])?.__mastered || window.safeGetJson("english_story_app__masteredWords", []) || [],
+      learningBasket : window.safeGetJson(STORE.BASKET, []) || [],
+      lessonHistory  : window.safeGetJson(STORE.HISTORY, []) || []
+    };
+  }
+
+  function writeLocalState(d) {
+    if (!d || typeof d !== 'object') return;
+    try {
+      if (Array.isArray(d.wordsInProgress)) window.safeSetJson(STORE.IN_PROGRESS, d.wordsInProgress);
+      if (Array.isArray(d.masteredWords))   window.safeSetJson("english_story_app__masteredWords", d.masteredWords);
+      if (Array.isArray(d.learningBasket))   window.safeSetJson(STORE.BASKET, d.learningBasket);
+      if (Array.isArray(d.lessonHistory))    window.safeSetJson(STORE.HISTORY, d.lessonHistory);
+    } catch {}
+  }
+
+  async function loadFromDrive() {
+    if (!hasToken()) return { ok:false, reason:'no_token' };
+    await ensureDriveApi();
+
+    // ابحث عن الملف
+    const list = await window.gapi.client.drive.files.list({
+      spaces: 'appDataFolder',
+      q: `name='${FILE_NAME}' and trashed=false`,
+      fields: 'files(id,name,modifiedTime)'
+    });
+    const file = list.result.files?.[0];
+
+    if (!file) return { ok:false, reason:'not_found' };
+
+    const blob = await window.gapi.client.drive.files.get({ fileId: file.id, alt: 'media' });
+    const raw  = blob.result ?? blob.body ?? '{}';
+    const data = typeof raw === 'string' ? JSON.parse(raw) : raw;
+
+    window.safeSet(STORE.DRIVE_FILE_ID, file.id);
+    writeLocalState(data);
+
+    document.dispatchEvent(new CustomEvent("esa:drive-loaded", { detail:{ fileId:file.id, modified:file.modifiedTime } }));
+    return { ok:true, data, fileId:file.id };
+  }
+
+  async function saveToDrive() {
+    if (!hasToken()) return { ok:false, reason:'no_token' };
+    await ensureDriveApi();
+
+    const appState = readLocalState();
+    const tokenObj = window.gapi.client.getToken();
+    const boundary = '-------314159265358979323846';
+    const delimiter = `\r\n--${boundary}\r\n`;
+    const closeDelim = `\r\n--${boundary}--`;
+    const headers = {
+      'Authorization': `Bearer ${tokenObj.access_token}`,
+      'Content-Type': `multipart/related; boundary=${boundary}`
+    };
+
+    const createMeta = { name: FILE_NAME, mimeType: 'application/json', parents: ['appDataFolder'] };
+    const metaCreateStr = JSON.stringify(createMeta);
+    const metaUpdateStr = JSON.stringify({});
+    const dataPart = JSON.stringify(appState);
+
+    const makeBody = (meta)=> delimiter + 'Content-Type: application/json; charset=UTF-8\r\n\r\n' +
+      meta + delimiter + 'Content-Type: application/json\r\n\r\n' + dataPart + closeDelim;
+
+    let fileId = window.safeGet(STORE.DRIVE_FILE_ID, null);
+
+    try {
+      if (fileId) {
+        const res = await fetch(
+          `https://www.googleapis.com/upload/drive/v3/files/${fileId}?uploadType=multipart`,
+          { method: 'PATCH', headers, body: makeBody(metaUpdateStr) }
+        );
+        if (!res.ok) throw new Error(await res.text());
+      } else {
+        const res = await fetch(
+          'https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart',
+          { method: 'POST', headers, body: makeBody(metaCreateStr) }
+        );
+        if (!res.ok) throw new Error(await res.text());
+        const created = await res.json();
+        fileId = created.id;
+        window.safeSet(STORE.DRIVE_FILE_ID, fileId);
+      }
+      document.dispatchEvent(new CustomEvent("esa:drive-saved", { detail:{ fileId } }));
+      return { ok:true, fileId };
     } catch (e) {
-      emit("auth:error", { error: e });
+      return { ok:false, reason:'network_error' };
     }
   }
 
-  // ------- API عامة متاحة للتطبيق -------
-  window.AUTH = {
-    init,                 // انتظار جاهزية المكتبات
-    signIn,               // تسجيل الدخول
-    signOut,              // تسجيل الخروج
-    tokenRefresh,         // تحديث صامت للتوكن
-    isLoggedIn: () => isLoggedIn,
-    getProfile: () => userProfile,
-    loadStateFromDrive,   // { wordsInProgress, masteredWords, learningBasket, lessonHistory }
-    saveStateToDrive,     // يرسل نفس الكائن أعلاه للحفظ
-    getDriveFileId: () => driveFileId,
+  // ---------- تهيئة تلقائية على كل صفحة ----------
+  (async function bootstrap(){
+    await ready();
+
+    // حاول تسجيل دخول صامت لتأكيد الحالة
+    await silent();
+
+    // إن كنا مسجّلين: حمّل من Drive لمرة أولى (أولوية سحابية)
+    if (hasToken()) {
+      const r = await loadFromDrive();
+      if (!r.ok && r.reason==='not_found') {
+        // إن لم يوجد ملف: أنشئه بالبيانات المحليّة
+        await saveToDrive();
+      }
+    }
+  })();
+
+  // واجهة عامة
+  window.Auth = {
+    ready,
+    silent,
+    signInInteractive,
+    signOut,
+    isSignedIn: ()=> hasToken() || isProbablySignedIn(),
+    getProfile,
+    loadFromDrive,
+    saveToDrive,
   };
 })();
